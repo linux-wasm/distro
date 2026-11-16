@@ -7,20 +7,20 @@ BusyBox patches, the initramfs, and later the web front end.
 **Live: https://linux-wasm.github.io/distro/** (the kernel booting in your
 browser tab; rebuilt from `main` on every push).
 
-**Status: only the kernel.** `scripts/build.sh` fetches the pinned kernel
-commit, builds it and assembles the web page; `scripts/test.sh` boots the
-kernel headless. The boot ends, as expected for now, in
-`Kernel panic - not syncing: No working init found`.
-There is no user space: musl, BusyBox and the initramfs are not implemented
-(the scripts say so and fail if asked for them).
+**Status: kernel plus a test init.** `scripts/build.sh` fetches the pinned
+kernel commit, builds it and assembles the web page; `scripts/test.sh`
+boots it headless. The kernel runs its own libc-free test `/init` in user
+mode, which prints a few lines and powers off. There is no real user space
+yet: musl, BusyBox and the initramfs are not implemented (the scripts say so
+and fail if asked for them).
 
 ## Repositories
 
 | Repository | Role | State |
 |---|---|---|
-| [linux-wasm/linux](https://github.com/linux-wasm/linux) | Kernel with `arch/wasm` | boots to "no init" |
+| [linux-wasm/linux](https://github.com/linux-wasm/linux) | Kernel with `arch/wasm` | boots into a test init in user mode |
 | [linux-wasm/musl](https://github.com/linux-wasm/musl) | C library | port not started |
-| linux-wasm/distro (this) | Puts it together | builds and boots the kernel |
+| linux-wasm/distro (this) | Puts it together | builds, boots and publishes the kernel |
 
 BusyBox needs few changes, so it is planned as upstream release + patches
 in `patches/busybox/` rather than a fork.
@@ -73,11 +73,14 @@ distro needs to change).
 
 ## Roadmap
 
-1. Kernel: user mode (syscall entry, wasm binfmt, user threads, tty),
-   tested with a hand-written init that needs no libc.
-2. musl against that ABI.
-3. BusyBox and an initramfs here; boot test expects a shell prompt.
-4. Web front end with a terminal and devices here. Today `site/` is only a
+1. Kernel: user mode with a hand-written init that needs no libc. Done:
+   system calls, wasm binfmt, tty output.
+2. Kernel: what a shell needs. vfork/clone and execve from user space,
+   signal handlers, console input.
+3. musl against the kernel's user-space ABI (documented in the kernel's
+   `arch/wasm/kernel/binfmt_wasm.c`).
+4. BusyBox and an initramfs here; boot test expects a shell prompt.
+5. Web front end with a terminal and devices here. Today `site/` is only a
    log viewer around the kernel's reference host scripts.
 
 ## Conventions

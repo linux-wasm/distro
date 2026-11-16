@@ -15,8 +15,9 @@ set -eu
 build_kernel() {
 	"$DISTRO/scripts/fetch.sh" kernel
 	"$KERNEL_TOOLS/scripts/build-env.sh"
-	"$KERNEL_TOOLS/scripts/kmake.sh" tinyconfig
-	"$KERNEL_TOOLS/scripts/kmake.sh" -j"$(nproc)"
+	# Until the distro has a user space of its own, use the kernel's
+	# standard build, which embeds its libc-free test init as initramfs.
+	"$KERNEL_TOOLS/scripts/build.sh"
 	echo "kernel: $KERNEL_OUT/vmlinux.wasm"
 }
 
