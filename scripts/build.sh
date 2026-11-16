@@ -30,9 +30,8 @@ build_site() {
 	rm -rf "$SITE_OUT"
 	mkdir -p "$SITE_OUT"
 	cp "$DISTRO"/site/* "$SITE_OUT/"
-	for f in host.js machine.js thread.js worker.js; do
-		cp "$KERNEL_TOOLS/host/$f" "$SITE_OUT/"
-	done
+	# Everything the browser needs; the node-*.mjs files are for node.
+	cp "$KERNEL_TOOLS"/host/*.js "$SITE_OUT/"
 	cp "$KERNEL_OUT/vmlinux.wasm" "$SITE_OUT/"
 	printf '{"kernel_repo": "%s", "kernel_commit": "%s"}\n' \
 		"${KERNEL_REPO%.git}" "$(git -C "$KERNEL_DIR" rev-parse HEAD)" \
