@@ -45,7 +45,7 @@ scripts/serve.sh      # http://127.0.0.1:8080/
 |---|---|
 | `sources.env` | Pinned kernel and musl commits, BusyBox release |
 | `scripts/` | `fetch.sh`, `build.sh`, `test.sh`, `serve.sh` |
-| `user/` | The distro's own programs and files: `init.c`, `motd` |
+| `user/` | The distro's own programs and files: `init.c`, `selftest.c` (`/bin/selftest`), `motd` |
 | `tests/` | What the boot test types (`boot-input.txt`) and expects (`boot-expect.txt`) |
 | `site/` | The web page and the service worker |
 | `patches/` | Patches for upstream projects that have no fork here (BusyBox) |
@@ -88,8 +88,8 @@ distro needs to change).
 
 1. Kernel: user mode. Done: system calls, wasm binfmt, clone with an entry
    function, execve, console input and output.
-2. musl. Done: builds, runs the demo init. Open: setjmp/longjmp, threads
-   untested, no test suite run.
+2. musl. Done: builds, runs the demo init; `/bin/selftest` covers setjmp,
+   files, pipes, malloc, time and threads. Open: no libc test suite run.
 3. Kernel: signal handlers (Ctrl-C, job control).
 4. BusyBox. Its shell and init call `vfork()`, which cannot exist here
    (a child cannot resume in its parent's wasm call stack); they need

@@ -57,7 +57,10 @@ container_run() {
 # Compiler and linker flags of a user program; the ABI is defined by the
 # kernel (arch/wasm/kernel/binfmt_wasm.c). Paths are container paths.
 LLVM=/usr/lib/llvm-19/bin
-USER_CFLAGS="--target=wasm32-unknown-unknown -fPIC -matomics -mbulk-memory -O2"
+#  -mexception-handling -mllvm -wasm-enable-sjlj: how setjmp/longjmp work
+#      on wasm (see src/setjmp/wasm32/setjmp.c in musl).
+WASM_CFLAGS="-fPIC -matomics -mbulk-memory -mexception-handling -O2"
+USER_CFLAGS="--target=wasm32-unknown-unknown $WASM_CFLAGS -mllvm -wasm-enable-sjlj"
 USER_LDFLAGS="-pie --experimental-pic --no-entry --export=_start \
 --export-if-defined=__clone_entry --import-memory --shared-memory \
 --max-memory=4294967296"

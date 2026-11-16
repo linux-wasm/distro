@@ -27,7 +27,7 @@ build_musl() {
 		if [ ! -f config.mak ]; then
 			CC='$LLVM/clang --target=wasm32-unknown-unknown' \
 			AR=$LLVM/llvm-ar RANLIB=$LLVM/llvm-ranlib \
-			CFLAGS='-fPIC -matomics -mbulk-memory -O2' LIBCC=' ' \
+			CFLAGS='$WASM_CFLAGS' LIBCC=' ' \
 			/musl/configure --target=wasm32 --prefix=/ \
 				--disable-shared --srcdir=/musl
 		fi
@@ -59,13 +59,16 @@ build_user() {
 # build container sees as /out. The list is in usr/gen_init_cpio format.
 build_initramfs() {
 	mkdir -p "$KERNEL_OUT/initramfs"
-	cp "$USER_OUT/init.wasm" "$DISTRO/user/motd" "$KERNEL_OUT/initramfs/"
+	cp "$USER_OUT"/*.wasm "$DISTRO/user/motd" "$KERNEL_OUT/initramfs/"
 	cat > "$KERNEL_OUT/initramfs/list" <<-'LIST'
 	dir /dev 0755 0 0
 	nod /dev/console 0600 0 0 c 5 1
 	dir /etc 0755 0 0
 	file /etc/motd /out/initramfs/motd 0644 0 0
 	file /init /out/initramfs/init.wasm 0755 0 0
+	dir /bin 0755 0 0
+	file /bin/selftest /out/initramfs/selftest.wasm 0755 0 0
+	dir /tmp 1777 0 0
 	LIST
 	echo "initramfs: $KERNEL_OUT/initramfs/list"
 }
