@@ -19,6 +19,7 @@ else
 fi
 KERNEL_OUT="$WORK/build/kernel"
 KERNEL_TOOLS="$KERNEL_DIR/tools/wasm"
+SITE_OUT="$WORK/site"
 
 # The kernel's own scripts read KOUT.
 export KOUT="$KERNEL_OUT"

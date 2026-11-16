@@ -1,10 +1,14 @@
-# Build the pinned kernel and boot it headless.
+# Build the pinned kernel, boot it headless, and on main publish the web
+# page to GitHub Pages.
 name: ci
 
 on:
   push:
     branches: [main]
   pull_request:
+
+permissions:
+  contents: read
 
 jobs:
   build-and-boot:
@@ -22,7 +26,20 @@ jobs:
       - name: Boot test
         run: scripts/test.sh
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-pages-artifact@v3
         with:
-          name: vmlinux-wasm
-          path: work/build/kernel/vmlinux.wasm
+          path: work/site
+
+  deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: build-and-boot
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

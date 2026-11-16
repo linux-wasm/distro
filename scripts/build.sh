@@ -3,6 +3,7 @@
 #
 #   scripts/build.sh            # everything that can be built today
 #   scripts/build.sh kernel
+#   scripts/build.sh site       # assemble the web page into work/site/
 #   scripts/build.sh musl | busybox | initramfs    (not implemented yet)
 #
 # The kernel is built with its own tooling (tools/wasm/scripts in the
@@ -17,6 +18,25 @@ build_kernel() {
 	"$KERNEL_TOOLS/scripts/kmake.sh" tinyconfig
 	"$KERNEL_TOOLS/scripts/kmake.sh" -j"$(nproc)"
 	echo "kernel: $KERNEL_OUT/vmlinux.wasm"
+}
+
+# The static web site: this repository's page (site/), the kernel's
+# reference host scripts and the kernel image. Deployable as-is to any
+# static host; site/sw.js supplies the COOP/COEP headers where the host
+# cannot.
+build_site() {
+	[ -f "$KERNEL_OUT/vmlinux.wasm" ] || build_kernel
+	rm -rf "$SITE_OUT"
+	mkdir -p "$SITE_OUT"
+	cp "$DISTRO"/site/* "$SITE_OUT/"
+	for f in host.js machine.js thread.js worker.js; do
+		cp "$KERNEL_TOOLS/host/$f" "$SITE_OUT/"
+	done
+	cp "$KERNEL_OUT/vmlinux.wasm" "$SITE_OUT/"
+	printf '{"kernel_repo": "%s", "kernel_commit": "%s"}\n' \
+		"${KERNEL_REPO%.git}" "$(git -C "$KERNEL_DIR" rev-parse HEAD)" \
+		> "$SITE_OUT/build.json"
+	echo "site: $SITE_OUT"
 }
 
 build_musl() {
@@ -34,11 +54,13 @@ build_initramfs() {
 case "${1:-all}" in
 all)
 	build_kernel
+	build_site
 	echo "skipped: musl, busybox, initramfs (not implemented yet, see README.md)"
 	;;
 kernel) build_kernel ;;
+site) build_site ;;
 musl) build_musl ;;
 busybox) build_busybox ;;
 initramfs) build_initramfs ;;
-*) echo "usage: $0 [all|kernel|musl|busybox|initramfs]" >&2; exit 1 ;;
+*) echo "usage: $0 [all|kernel|site|musl|busybox|initramfs]" >&2; exit 1 ;;
 esac

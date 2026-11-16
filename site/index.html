@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Linux on WebAssembly</title>
+    <meta
+      name="description"
+      content="The Linux kernel, compiled to WebAssembly, booting in this browser tab."
+    />
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+      body {
+        display: flex;
+        flex-direction: column;
+        background: #111;
+        color: #ddd;
+        font: 14px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      }
+      header {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.25em 1em;
+        align-items: baseline;
+        padding: 0.5em 1em;
+        background: #1c1c1c;
+        border-bottom: 1px solid #333;
+      }
+      header h1 {
+        margin: 0;
+        font-size: 14px;
+      }
+      header a {
+        color: #8ab4f8;
+      }
+      #status {
+        color: #8a8;
+      }
+      header .links {
+        margin-left: auto;
+        display: flex;
+        gap: 1em;
+      }
+      #note {
+        margin: 0;
+        padding: 0.5em 1em;
+        background: #171717;
+        border-bottom: 1px solid #333;
+        color: #aaa;
+      }
+      #console {
+        flex: 1;
+        margin: 0;
+        padding: 1em;
+        overflow: auto;
+        white-space: pre-wrap;
+        word-break: break-all;
+      }
+      #console .host {
+        color: #68a;
+      }
+      #console .host.error {
+        color: #e66;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Linux on WebAssembly</h1>
+      <span id="status">starting</span>
+      <span class="links">
+        <a id="build" href="https://github.com/linux-wasm/linux"></a>
+        <a href="https://github.com/linux-wasm">source</a>
+      </span>
+    </header>
+    <p id="note">
+      A real Linux kernel booting in this tab. There is no user space yet, so
+      the boot ends in "No working init found"; that is the expected result
+      today. Lines starting with [host] come from the page, everything else
+      is kernel output.
+    </p>
+    <pre id="console" aria-label="Kernel console"></pre>
+    <script type="module" src="boot.js"></script>
+  </body>
+</html>
