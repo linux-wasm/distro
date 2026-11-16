@@ -45,13 +45,6 @@
         display: flex;
         gap: 1em;
       }
-      #note {
-        margin: 0;
-        padding: 0.5em 1em;
-        background: #171717;
-        border-bottom: 1px solid #333;
-        color: #aaa;
-      }
       #console {
         flex: 1;
         margin: 0;
@@ -77,12 +70,6 @@
         <a href="https://github.com/linux-wasm">source</a>
       </span>
     </header>
-    <p id="note">
-      A real Linux kernel booting in this tab. There is no user space yet, so
-      the boot ends in "No working init found"; that is the expected result
-      today. Lines starting with [host] come from the page, everything else
-      is kernel output.
-    </p>
     <pre id="console" aria-label="Kernel console"></pre>
     <script type="module" src="boot.js"></script>
   </body>
