@@ -1,0 +1,7 @@
+uname
+echo musl says hello
+ls /
+cat /etc/motd
+run /init one two
+run /nonexistent
+poweroff

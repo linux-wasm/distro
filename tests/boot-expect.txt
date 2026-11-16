@@ -1,0 +1,23 @@
+# What the boot test must see, in order: fixed strings, one per line, each
+# on a later line of the log than the previous one. scripts/test.sh types
+# the commands of tests/boot-input.txt at the first prompt.
+Linux version
+Run /init as init process
+linux-wasm: this is a demo init, not a shell.
+# uname
+Linux 7.
+# echo
+musl says hello
+# ls / (directory order is the kernel's; only one entry is checked)
+etc/
+# cat /etc/motd
+came out of an initramfs
+# run /init one two (posix_spawn, waitpid)
+of 1: one two
+exited with status 2
+# run /nonexistent
+/nonexistent: No such file or directory
+# poweroff
+powering off
+reboot: Power down
+[host] machine halted: poweroff

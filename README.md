@@ -7,21 +7,20 @@ BusyBox patches, the initramfs, and later the web front end.
 **Live: https://linux-wasm.github.io/distro/** (the kernel booting in your
 browser tab; rebuilt from `main` on every push).
 
-**Status: kernel plus test programs.** `scripts/build.sh` fetches the pinned
-kernel commit, builds it and assembles the web page; `scripts/test.sh`
-boots it headless. The kernel runs its own libc-free test programs in user
-mode: they start a child process, exec a second program, ask you to type a
-line and power off. There is no real user space yet: musl, BusyBox and the
-initramfs are not implemented (the scripts say so and fail if asked for
-them).
+**Status: kernel + musl + a demo init.** `scripts/build.sh` builds musl,
+a small C program linked against it (`user/init.c`), packs it into an
+initramfs, builds the kernel around it and assembles the web page. The
+init is a command loop, not a shell: `help`, `uname`, `echo`, `ls`, `cat`,
+`run PROG` (posix_spawn + waitpid) and `poweroff`. BusyBox is not there yet
+(the script says so and fails if asked for it).
 
 ## Repositories
 
 | Repository | Role | State |
 |---|---|---|
 | [linux-wasm/linux](https://github.com/linux-wasm/linux) | Kernel with `arch/wasm` | runs test programs in user mode: syscalls, clone, execve, console input |
-| [linux-wasm/musl](https://github.com/linux-wasm/musl) | C library | port not started |
-| linux-wasm/distro (this) | Puts it together | builds, boots and publishes the kernel |
+| [linux-wasm/musl](https://github.com/linux-wasm/musl) | C library | builds; printf, malloc, files, posix_spawn work in the demo init; otherwise untested |
+| linux-wasm/distro (this) | Puts it together | builds, boot-tests and publishes kernel + musl + demo init |
 
 BusyBox needs few changes, so it is planned as upstream release + patches
 in `patches/busybox/` rather than a fork.
@@ -31,10 +30,25 @@ in `patches/busybox/` rather than a fork.
 Requirements: git, docker (or podman), node >= 20, python3.
 
 ```sh
-scripts/build.sh      # fetch + build what exists today: kernel and web page
-scripts/test.sh       # headless boot test
+scripts/build.sh      # toolchain image, musl, user programs, initramfs, kernel, site
+scripts/test.sh       # headless boot test: types commands, checks the output
 scripts/serve.sh      # http://127.0.0.1:8080/
 ```
+
+`scripts/build.sh <step>` runs one step (`toolchain`, `musl`, `user`,
+`initramfs`, `kernel`, `site`). Everything fetched or built goes to `work/`
+(ignored by git).
+
+## Layout
+
+| Path | Contents |
+|---|---|
+| `sources.env` | Pinned kernel and musl commits, BusyBox release |
+| `scripts/` | `fetch.sh`, `build.sh`, `test.sh`, `serve.sh` |
+| `user/` | The distro's own programs and files: `init.c`, `motd` |
+| `tests/` | What the boot test types (`boot-input.txt`) and expects (`boot-expect.txt`) |
+| `site/` | The web page and the service worker |
+| `patches/` | Patches for upstream projects that have no fork here (BusyBox) |
 
 ## The web page
 
@@ -51,20 +65,18 @@ them and `site/boot.js` reloads the page once after installing it.
 
 The CI workflow deploys `work/site/` to GitHub Pages from `main`.
 
-Everything fetched or built goes to `work/` (ignored by git).
-
 ## Pinned versions
 
 `sources.env` names the exact kernel commit, musl commit and BusyBox
 release. Bumping one is its own commit, e.g.
 `build(sources): bump kernel to <short sha>`.
 
-## Working on the kernel and the distro together
+## Working on the kernel, musl and the distro together
 
-Point the scripts at a kernel checkout instead of the pinned commit:
+Point the scripts at local checkouts instead of the pinned commits:
 
 ```sh
-KERNEL_DIR=~/src/linux scripts/build.sh kernel
+KERNEL_DIR=~/src/linux MUSL_DIR=~/src/musl scripts/build.sh
 KERNEL_DIR=~/src/linux scripts/test.sh
 ```
 
@@ -76,12 +88,14 @@ distro needs to change).
 
 1. Kernel: user mode. Done: system calls, wasm binfmt, clone with an entry
    function, execve, console input and output.
-2. Kernel: signal handlers; whatever musl turns out to need.
-3. musl against the kernel's user-space ABI (documented in the kernel's
-   `arch/wasm/kernel/binfmt_wasm.c`).
-4. BusyBox and an initramfs here; boot test expects a shell prompt.
-5. Web front end with a terminal and devices here. Today `site/` is only a
-   log viewer around the kernel's reference host scripts.
+2. musl. Done: builds, runs the demo init. Open: setjmp/longjmp, threads
+   untested, no test suite run.
+3. Kernel: signal handlers (Ctrl-C, job control).
+4. BusyBox. Its shell and init call `vfork()`, which cannot exist here
+   (a child cannot resume in its parent's wasm call stack); they need
+   patches to use `posix_spawn`, or a libc `vfork` built on setjmp.
+5. Web front end with a real terminal. Today `site/` is a log viewer with
+   keyboard input around the kernel's reference host scripts.
 
 ## Conventions
 
