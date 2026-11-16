@@ -7,18 +7,19 @@ BusyBox patches, the initramfs, and later the web front end.
 **Live: https://linux-wasm.github.io/distro/** (the kernel booting in your
 browser tab; rebuilt from `main` on every push).
 
-**Status: kernel plus a test init.** `scripts/build.sh` fetches the pinned
+**Status: kernel plus test programs.** `scripts/build.sh` fetches the pinned
 kernel commit, builds it and assembles the web page; `scripts/test.sh`
-boots it headless. The kernel runs its own libc-free test `/init` in user
-mode, which prints a few lines and powers off. There is no real user space
-yet: musl, BusyBox and the initramfs are not implemented (the scripts say so
-and fail if asked for them).
+boots it headless. The kernel runs its own libc-free test programs in user
+mode: they start a child process, exec a second program, ask you to type a
+line and power off. There is no real user space yet: musl, BusyBox and the
+initramfs are not implemented (the scripts say so and fail if asked for
+them).
 
 ## Repositories
 
 | Repository | Role | State |
 |---|---|---|
-| [linux-wasm/linux](https://github.com/linux-wasm/linux) | Kernel with `arch/wasm` | boots into a test init in user mode |
+| [linux-wasm/linux](https://github.com/linux-wasm/linux) | Kernel with `arch/wasm` | runs test programs in user mode: syscalls, clone, execve, console input |
 | [linux-wasm/musl](https://github.com/linux-wasm/musl) | C library | port not started |
 | linux-wasm/distro (this) | Puts it together | builds, boots and publishes the kernel |
 
@@ -73,10 +74,9 @@ distro needs to change).
 
 ## Roadmap
 
-1. Kernel: user mode with a hand-written init that needs no libc. Done:
-   system calls, wasm binfmt, tty output.
-2. Kernel: what a shell needs. vfork/clone and execve from user space,
-   signal handlers, console input.
+1. Kernel: user mode. Done: system calls, wasm binfmt, clone with an entry
+   function, execve, console input and output.
+2. Kernel: signal handlers; whatever musl turns out to need.
 3. musl against the kernel's user-space ABI (documented in the kernel's
    `arch/wasm/kernel/binfmt_wasm.c`).
 4. BusyBox and an initramfs here; boot test expects a shell prompt.
@@ -88,3 +88,11 @@ distro needs to change).
 - [Conventional Commits](https://www.conventionalcommits.org/) in English.
 - Nothing is faked: a step that does not exist fails loudly instead of
   pretending.
+
+## License
+
+The files in this repository (scripts, the web page, CI) are MIT licensed,
+see [LICENSE](LICENSE). That does not extend to what they build: the kernel
+and BusyBox are GPL-2.0, musl is MIT, and a patch in `patches/` carries the
+license of the project it applies to. A built image is therefore subject to
+the GPL.
