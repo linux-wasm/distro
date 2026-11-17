@@ -1,0 +1,99 @@
+#!/usr/bin/env python3
+"""cc for Linux/wasm user programs. Runs inside the toolchain container.
+
+Build systems expect one compiler driver that both compiles and links, and
+they pass ELF linker options. clang has no driver support for this target,
+so this wrapper
+
+  - compiles with the flags every user program needs (position independent,
+    threads features, exception-based setjmp/longjmp, the musl sysroot);
+  - turns "cc -r" into a relocatable wasm-ld link;
+  - links by calling wasm-ld itself with the program ABI's flags, crt1.o,
+    libc.a and the compiler-rt builtins, keeping only the inputs (-o,
+    objects, archives, -L/-l) from the command line and dropping -Wl,...
+    and other options meant for an ELF linker.
+
+The ABI is defined by the kernel: arch/wasm/kernel/binfmt_wasm.c.
+Environment: WASM_SYSROOT (default /work/sysroot).
+"""
+import os
+import subprocess
+import sys
+import tempfile
+
+LLVM = "/usr/lib/llvm-19/bin"
+SYSROOT = os.environ.get("WASM_SYSROOT", "/work/sysroot")
+BUILTINS = "/usr/lib/llvm-19/lib/clang/19/lib/wasi/libclang_rt.builtins-wasm32.a"
+
+CFLAGS = [
+    "--target=wasm32-unknown-unknown", "-fPIC", "-matomics", "-mbulk-memory",
+    "-mexception-handling", "-mllvm", "-wasm-enable-sjlj",
+    f"--sysroot={SYSROOT}", "-isystem", f"{SYSROOT}/include",
+    # Not an ELF target, so clang does not define these on its own.
+    "-D__linux__", "-D__unix__", "-Wno-unused-command-line-argument",
+]
+LDFLAGS = [
+    "-pie", "--experimental-pic", "--no-entry", "--export=_start",
+    "--export-if-defined=__clone_entry", "--import-memory", "--shared-memory",
+    "--max-memory=4294967296",
+]
+# Everything in these lives in musl's libc.a.
+LIBC_LIBS = {"c", "m", "crypt", "rt", "pthread", "util", "dl", "resolv", "xnet"}
+
+
+def main():
+    args = sys.argv[1:]
+    if any(a in ("-c", "-E", "-S", "-M", "-MM") for a in args):
+        os.execv(f"{LLVM}/clang", ["clang"] + CFLAGS + args)
+
+    # Relocatable link ("cc -nostdlib -r", used by kbuild-style Makefiles
+    # for built-in.o): just combine the objects.
+    if "-r" in args:
+        keep = []
+        it = iter(args)
+        for a in it:
+            if a == "-o":
+                keep += [a, next(it)]
+            elif a.endswith((".o", ".a")):
+                keep.append(a)
+        os.execv(f"{LLVM}/wasm-ld", ["wasm-ld", "-r"] + keep)
+
+    output = "a.out"
+    inputs, sources, cflags = [], [], []
+    it = iter(args)
+    for a in it:
+        if a == "-o":
+            output = next(it)
+        elif a.startswith("-o") and len(a) > 2:
+            output = a[2:]
+        elif a.endswith((".o", ".a")):
+            inputs.append(a)
+        elif a.endswith((".c", ".S", ".s")):
+            sources.append(a)
+        elif a.startswith("-L"):
+            inputs.append(a)
+        elif a.startswith("-l"):
+            if a[2:] not in LIBC_LIBS:
+                inputs.append(a)
+        elif a.startswith("-Wl,") or a in ("-static", "-pie", "-shared", "-nostdlib", "-s"):
+            pass
+        elif a in ("-x", "-include", "-isystem", "-I", "-D", "-U"):
+            cflags += [a, next(it)]
+        else:
+            cflags.append(a)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        for i, src in enumerate(sources):
+            obj = os.path.join(tmp, f"{i}.o")
+            subprocess.run([f"{LLVM}/clang"] + CFLAGS + cflags + ["-c", src, "-o", obj], check=True)
+            inputs.append(obj)
+        cmd = [f"{LLVM}/wasm-ld"] + LDFLAGS + [f"{SYSROOT}/lib/crt1.o"] + inputs + [
+            f"{SYSROOT}/lib/libc.a", BUILTINS, "-o", output]
+        sys.exit(subprocess.run(cmd).returncode)
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except subprocess.CalledProcessError as e:
+        sys.exit(e.returncode)

@@ -1,35 +1,34 @@
 # What the boot test must see, in order: fixed strings, one per line, each
 # on a later line of the log than the previous one. scripts/test.sh types
-# the commands of tests/boot-input.txt at the first prompt.
+# the commands of tests/boot-input.txt at the first shell prompt.
 Linux version
 Run /init as init process
-linux-wasm: this is a demo init, not a shell.
-# uname
-Linux 7.
-# echo
-musl says hello
-# ls / (directory order is the kernel's; only one entry is checked)
-etc/
-# cat /etc/motd
+init started: BusyBox
 came out of an initramfs
-# run /init one two (posix_spawn, waitpid)
-of 1: one two
-exited with status 2
-# run /nonexistent
-/nonexistent: No such file or directory
-# run /bin/selftest (user/selftest.c): setjmp, files, pipes, malloc, time,
-# threads, vfork. It prints "ok"/"FAIL" per check; these are the summary lines.
-ok setjmp/longjmp
-ok pwrite at 5 GiB
-ok time() after 2025
-ok mutex-protected counter
-ok vfork child exit status
-: via vfork
-ok exec'd child exit status
-ok failed exec in vfork child
+hush - the humble shell
+# uname -sm
+Linux wasm
+# echo
+busybox says hello
+# ls /etc
+inittab
+motd
+# a pipeline: cat | grep -c
+1
+# command substitution (the shell re-executes itself) and the hostname
+# set from inittab
+host is linux-wasm
+# for loop
+loop 3
+# [ ] and /proc
+proc-mounted
+# exit status of a failing command
+No such file or directory
+status 1
+# /bin/selftest (user/selftest.c): setjmp, files, pipes, malloc, time,
+# threads, vfork
 selftest: all passed
-exited with status 0
-# poweroff
-powering off
+# poweroff through BusyBox init
+Requesting system poweroff
 reboot: Power down
 [host] machine halted: poweroff

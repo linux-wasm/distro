@@ -190,10 +190,10 @@ static void test_vfork(void)
 	check("vfork child exit status", waitpid(pid, &status, 0) == pid &&
 					 WIFEXITED(status) && WEXITSTATUS(status) == 33);
 
-	/* A child that execs: /init prints its arguments and returns argc-1. */
+	/* A child that execs: "sh -c" prints a line and exits with 2. */
 	pid = vfork();
 	if (pid == 0) {
-		execl("/init", "/init", "via", "vfork", (char *)0);
+		execl("/bin/sh", "sh", "-c", "echo via vfork; exit 2", (char *)0);
 		_exit(127);
 	}
 	check("vfork + exec returns the child pid", pid > 0);

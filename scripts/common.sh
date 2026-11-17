@@ -54,20 +54,8 @@ container_run() {
 		-w /work "$IMAGE" "$@"
 }
 
-# Compiler and linker flags of a user program; the ABI is defined by the
-# kernel (arch/wasm/kernel/binfmt_wasm.c). Paths are container paths.
-LLVM=/usr/lib/llvm-19/bin
-#  -mexception-handling -mllvm -wasm-enable-sjlj: how setjmp/longjmp work
-#      on wasm (see src/setjmp/wasm32/setjmp.c in musl).
+# User programs are compiled and linked with scripts/wasm-cc (inside the
+# container), which knows the flags of the program ABI. musl itself only
+# needs the compile flags:
 WASM_CFLAGS="-fPIC -matomics -mbulk-memory -mexception-handling -O2"
-USER_CFLAGS="--target=wasm32-unknown-unknown $WASM_CFLAGS -mllvm -wasm-enable-sjlj"
-USER_LDFLAGS="-pie --experimental-pic --no-entry --export=_start \
---export-if-defined=__clone_entry --import-memory --shared-memory \
---max-memory=4294967296"
-USER_LIBS="/work/sysroot/lib/libc.a \
-/usr/lib/llvm-19/lib/clang/19/lib/wasi/libclang_rt.builtins-wasm32.a"
-
-not_implemented() {
-	echo "$1: not implemented yet ($2)" >&2
-	return 1
-}
+LLVM=/usr/lib/llvm-19/bin

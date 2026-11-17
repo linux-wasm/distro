@@ -1,0 +1,6 @@
+# /etc/inittab for BusyBox init.
+::sysinit:/bin/mount -t proc proc /proc
+::sysinit:/bin/hostname linux-wasm
+::sysinit:/bin/cat /etc/motd
+::respawn:-/bin/sh
+::ctrlaltdel:/sbin/reboot

@@ -1,0 +1,68 @@
+# BusyBox options enabled on top of "make allnoconfig", one per line
+# (without the CONFIG_ prefix). Used by scripts/build.sh busybox.
+#
+# NOMMU makes BusyBox use vfork+exec instead of fork, which is what this
+# system can do; hush is the shell written for that.
+NOMMU
+LFS
+LONG_OPTS
+SHOW_USAGE
+FEATURE_VERBOSE_USAGE
+BUSYBOX
+FEATURE_EDITING
+# shell
+HUSH
+SH_IS_HUSH
+HUSH_INTERACTIVE
+HUSH_IF
+HUSH_LOOPS
+HUSH_CASE
+HUSH_FUNCTIONS
+HUSH_LOCAL
+HUSH_EXPORT
+HUSH_ECHO
+HUSH_PRINTF
+HUSH_TEST
+HUSH_HELP
+HUSH_SET
+HUSH_UNSET
+HUSH_WAIT
+HUSH_READ
+HUSH_KILL
+HUSH_TICK
+HUSH_TYPE
+# init
+INIT
+FEATURE_USE_INITTAB
+POWEROFF
+HALT
+REBOOT
+# coreutils and friends
+CAT
+CP
+DATE
+DMESG
+ECHO
+ENV
+FALSE
+FREE
+GREP
+HEAD
+ID
+LS
+FEATURE_LS_FILETYPES
+FEATURE_LS_SORTFILES
+MKDIR
+MOUNT
+MV
+PRINTENV
+PS
+PWD
+RM
+SLEEP
+TAIL
+TOUCH
+TRUE
+UNAME
+HOSTNAME
+WC

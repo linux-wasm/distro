@@ -7,48 +7,60 @@ BusyBox patches, the initramfs, and later the web front end.
 **Live: https://linux-wasm.github.io/distro/** (the kernel booting in your
 browser tab; rebuilt from `main` on every push).
 
-**Status: kernel + musl + a demo init.** `scripts/build.sh` builds musl,
-a small C program linked against it (`user/init.c`), packs it into an
-initramfs, builds the kernel around it and assembles the web page. The
-init is a command loop, not a shell: `help`, `uname`, `echo`, `ls`, `cat`,
-`run PROG` (posix_spawn + waitpid) and `poweroff`. BusyBox is not there yet
-(the script says so and fails if asked for it).
+**Status: boots to a BusyBox shell.** `scripts/build.sh` builds musl,
+BusyBox (unpatched 1.38.0, NOMMU configuration with the hush shell) and a
+test program, packs them into an initramfs, builds the kernel around it
+and assembles the web page. BusyBox `init` runs `/etc/inittab` and starts
+an interactive shell with pipes, loops, command substitution and the
+applets listed in `busybox/config`.
+
+Not there: Ctrl-C and job control (the kernel does not run signal handlers
+yet), networking, persistent storage, and anything beyond that applet list.
 
 ## Repositories
 
 | Repository | Role | State |
 |---|---|---|
-| [linux-wasm/linux](https://github.com/linux-wasm/linux) | Kernel with `arch/wasm` | runs test programs in user mode: syscalls, clone, execve, console input |
-| [linux-wasm/musl](https://github.com/linux-wasm/musl) | C library | builds; printf, malloc, files, posix_spawn work in the demo init; otherwise untested |
-| linux-wasm/distro (this) | Puts it together | builds, boot-tests and publishes kernel + musl + demo init |
+| [linux-wasm/linux](https://github.com/linux-wasm/linux) | Kernel with `arch/wasm` | runs user programs: syscalls, clone, vfork, execve, console input |
+| [linux-wasm/musl](https://github.com/linux-wasm/musl) | C library | enough for BusyBox and `/bin/selftest`; no libc test suite run |
+| linux-wasm/distro (this) | Puts it together | builds, boot-tests and publishes kernel + musl + BusyBox |
 
-BusyBox needs few changes, so it is planned as upstream release + patches
-in `patches/busybox/` rather than a fork.
+BusyBox is the upstream release; it has needed no patches so far
+(`patches/busybox/` is where they would go).
 
 ## Usage
 
 Requirements: git, docker (or podman), node >= 20, python3.
 
 ```sh
-scripts/build.sh      # toolchain image, musl, user programs, initramfs, kernel, site
-scripts/test.sh       # headless boot test: types commands, checks the output
+scripts/build.sh      # toolchain image, musl, headers, user programs, BusyBox, initramfs, kernel, site
+scripts/test.sh       # headless boot test: types shell commands, checks the output
 scripts/serve.sh      # http://127.0.0.1:8080/
 ```
 
-`scripts/build.sh <step>` runs one step (`toolchain`, `musl`, `user`,
-`initramfs`, `kernel`, `site`). Everything fetched or built goes to `work/`
-(ignored by git).
+`scripts/build.sh <step>` runs one step (`toolchain`, `musl`, `headers`,
+`user`, `busybox`, `initramfs`, `kernel`, `site`). Everything fetched or
+built goes to `work/` (ignored by git).
 
 ## Layout
 
 | Path | Contents |
 |---|---|
 | `sources.env` | Pinned kernel and musl commits, BusyBox release |
-| `scripts/` | `fetch.sh`, `build.sh`, `test.sh`, `serve.sh` |
-| `user/` | The distro's own programs and files: `init.c`, `selftest.c` (`/bin/selftest`), `motd` |
+| `scripts/` | `fetch.sh`, `build.sh`, `test.sh`, `serve.sh`, and `wasm-cc`, the compiler driver for user programs |
+| `busybox/config` | BusyBox options enabled on top of allnoconfig |
+| `kernel.config` | Kernel options enabled on top of the kernel's tinyconfig |
+| `user/` | The distro's own files: `inittab`, `motd`, and `selftest.c` (`/bin/selftest`) |
 | `tests/` | What the boot test types (`boot-input.txt`) and expects (`boot-expect.txt`) |
 | `site/` | The web page and the service worker |
-| `patches/` | Patches for upstream projects that have no fork here (BusyBox) |
+| `patches/` | Patches for upstream projects that have no fork here |
+
+## Building your own programs
+
+`scripts/wasm-cc` behaves like `cc` for this system (it runs inside the
+toolchain container): it compiles with the required flags and links
+against musl. A single `.c` file dropped into `user/` is built and can be
+added to the initramfs list in `scripts/build.sh`.
 
 ## The web page
 
@@ -86,16 +98,17 @@ distro needs to change).
 
 ## Roadmap
 
-1. Kernel: user mode. Done: system calls, wasm binfmt, clone with an entry
-   function, execve, console input and output.
-2. musl. Done: builds, runs the demo init; `/bin/selftest` covers setjmp,
-   files, pipes, malloc, time, threads and vfork. Open: no libc test suite
-   run.
-3. Kernel: signal handlers (Ctrl-C, job control).
-4. BusyBox. `vfork()` now exists (the child borrows the parent's thread),
-   so its nommu code paths should apply; not attempted yet.
-5. Web front end with a real terminal. Today `site/` is a log viewer with
-   keyboard input around the kernel's reference host scripts.
+1. Kernel: user mode. Done: system calls, wasm binfmt, clone, vfork,
+   execve, console input and output.
+2. musl. Done: enough for BusyBox; `/bin/selftest` covers setjmp, files,
+   pipes, malloc, time, threads and vfork. Open: no libc test suite run.
+3. BusyBox. Done: init, hush and a basic applet set, unpatched.
+4. Kernel: signal handlers (Ctrl-C, job control).
+5. A real terminal on the page (escape sequences, line editing with arrow
+   keys); today `site/` is a plain text console around the kernel's
+   reference host scripts.
+6. An initramfs handed over by the host instead of built into the kernel,
+   more applets, storage, networking.
 
 ## Conventions
 

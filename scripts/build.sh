@@ -4,11 +4,12 @@
 #   scripts/build.sh            # everything, in dependency order
 #   scripts/build.sh toolchain  # the container image (from the kernel tree)
 #   scripts/build.sh musl       # libc -> work/sysroot/
+#   scripts/build.sh headers    # kernel headers for user space
 #   scripts/build.sh user       # this repository's programs (user/)
+#   scripts/build.sh busybox    # shell, init and the usual commands
 #   scripts/build.sh initramfs  # what goes into the kernel image
 #   scripts/build.sh kernel     # kernel with that initramfs built in
 #   scripts/build.sh site       # the web page -> work/site/
-#   scripts/build.sh busybox    (not implemented yet)
 #
 # Each step assumes the ones before it have run.
 set -eu
@@ -37,21 +38,60 @@ build_musl() {
 	echo "musl: $SYSROOT"
 }
 
+# Kernel headers (linux/*.h) for programs that include them: BusyBox.
+build_headers() {
+	"$KERNEL_TOOLS/scripts/kmake.sh" tinyconfig
+	"$KERNEL_TOOLS/scripts/kmake.sh" headers_install INSTALL_HDR_PATH=/out/headers
+}
+
 # Programs from user/: one .c file each, linked against musl.
 build_user() {
 	mkdir -p "$USER_OUT"
-	container_run sh -ec "
+	container_run sh -ec '
 		for src in /distro/user/*.c; do
-			name=\$(basename \$src .c)
-			$LLVM/clang $USER_CFLAGS -Wall --sysroot=/work/sysroot \
-				-isystem /work/sysroot/include \
-				-c \$src -o /work/build/user/\$name.o
-			$LLVM/wasm-ld $USER_LDFLAGS /work/sysroot/lib/crt1.o \
-				/work/build/user/\$name.o $USER_LIBS \
-				-o /work/build/user/\$name.wasm
+			/distro/scripts/wasm-cc -O2 -Wall "$src" \
+				-o "/work/build/user/$(basename "$src" .c).wasm"
 		done
-	"
+	'
 	echo "user: $USER_OUT"
+}
+
+# BusyBox: upstream release, configured from busybox/config, built with
+# scripts/wasm-cc as its compiler. busybox.links lists the applet paths.
+build_busybox() {
+	src="$WORK/src/busybox"
+	if [ ! -d "$src" ]; then
+		git clone -q --depth 1 -b "$BUSYBOX_TAG" "$BUSYBOX_REPO" "$src"
+		for patch in "$DISTRO"/patches/busybox/*.patch; do
+			[ -f "$patch" ] && git -C "$src" apply "$patch"
+		done
+	fi
+	"$CONTAINER" run --rm --security-opt label=disable \
+		--user "$(id -u):$(id -g)" -e HOME=/tmp \
+		-v "$DISTRO:/distro" -v "$WORK:/work" \
+		-v "$KERNEL_OUT/headers:/kernel-headers" \
+		-w /work/src/busybox "$IMAGE" sh -ec '
+		export PATH=/distro/scripts:$PATH
+		M="make CC=wasm-cc HOSTCC=gcc AR=/usr/lib/llvm-19/bin/llvm-ar \
+			NM=/usr/lib/llvm-19/bin/llvm-nm STRIP=true SKIP_STRIP=y"
+		$M allnoconfig >/dev/null
+		grep -v "^#" /distro/busybox/config | while read -r opt; do
+			[ -n "$opt" ] || continue
+			grep -q "^# CONFIG_$opt is not set" .config ||
+				{ echo "busybox/config: unknown option $opt" >&2; exit 1; }
+			sed -i "s/^# CONFIG_$opt is not set/CONFIG_$opt=y/" .config
+		done
+		sed -i "s/^CONFIG_SH_IS_NONE=y/# CONFIG_SH_IS_NONE is not set/" .config
+		# hush re-executes itself for $(...) and pipelines of builtins;
+		# the default, /proc/self/exe, needs /proc to be mounted.
+		sed -i "s|^CONFIG_BUSYBOX_EXEC_PATH=.*|CONFIG_BUSYBOX_EXEC_PATH=\"/bin/busybox\"|" .config
+		sed -i "s|^CONFIG_EXTRA_CFLAGS=.*|CONFIG_EXTRA_CFLAGS=\"-isystem /kernel-headers/include\"|" .config
+		yes "" | $M oldconfig >/dev/null
+		$M -s -j"$(nproc)" busybox busybox.links 2>&1 |
+			grep -v "is not supported \[-Wignored-optimization-argument\]" || true
+		test -f busybox
+	'
+	echo "busybox: $src/busybox"
 }
 
 # The initramfs is built into the kernel image (CONFIG_INITRAMFS_SOURCE),
@@ -59,17 +99,33 @@ build_user() {
 # build container sees as /out. The list is in usr/gen_init_cpio format.
 build_initramfs() {
 	mkdir -p "$KERNEL_OUT/initramfs"
-	cp "$USER_OUT"/*.wasm "$DISTRO/user/motd" "$KERNEL_OUT/initramfs/"
-	cat > "$KERNEL_OUT/initramfs/list" <<-'LIST'
-	dir /dev 0755 0 0
-	nod /dev/console 0600 0 0 c 5 1
-	dir /etc 0755 0 0
-	file /etc/motd /out/initramfs/motd 0644 0 0
-	file /init /out/initramfs/init.wasm 0755 0 0
-	dir /bin 0755 0 0
-	file /bin/selftest /out/initramfs/selftest.wasm 0755 0 0
-	dir /tmp 1777 0 0
-	LIST
+	out="$KERNEL_OUT/initramfs"
+	rm -rf "$out"
+	mkdir -p "$out"
+	cp "$USER_OUT"/*.wasm "$DISTRO/user/motd" "$DISTRO/user/inittab" "$out/"
+	cp "$WORK/src/busybox/busybox" "$out/busybox.wasm"
+	{
+		cat <<-'LIST'
+		dir /dev 0755 0 0
+		nod /dev/console 0600 0 0 c 5 1
+		dir /etc 0755 0 0
+		file /etc/motd /out/initramfs/motd 0644 0 0
+		file /etc/inittab /out/initramfs/inittab 0644 0 0
+		dir /tmp 1777 0 0
+		dir /root 0700 0 0
+		dir /proc 0555 0 0
+		dir /bin 0755 0 0
+		dir /sbin 0755 0 0
+		dir /usr 0755 0 0
+		dir /usr/bin 0755 0 0
+		dir /usr/sbin 0755 0 0
+		file /bin/busybox /out/initramfs/busybox.wasm 0755 0 0
+		file /bin/selftest /out/initramfs/selftest.wasm 0755 0 0
+		slink /init /bin/busybox 0777 0 0
+		LIST
+		# One symlink per applet, as "busybox --install -s" would make.
+		sed 's|.*|slink & /bin/busybox 0777 0 0|' "$WORK/src/busybox/busybox.links"
+	} > "$out/list"
 	echo "initramfs: $KERNEL_OUT/initramfs/list"
 }
 
@@ -82,7 +138,8 @@ build_kernel() {
 		--user "$(id -u):$(id -g)" \
 		-v "$KERNEL_DIR:/linux" -v "$KERNEL_OUT:/out" -w /linux "$IMAGE" \
 		scripts/config --file /out/.config \
-		--set-str INITRAMFS_SOURCE /out/initramfs/list
+		--set-str INITRAMFS_SOURCE /out/initramfs/list \
+		$(grep -v '^#' "$DISTRO/kernel.config" | sed '/^$/d; s/^/--enable /')
 	"$KERNEL_TOOLS/scripts/kmake.sh" olddefconfig
 	"$KERNEL_TOOLS/scripts/kmake.sh" -j"$(nproc)"
 	echo "kernel: $KERNEL_OUT/vmlinux.wasm"
@@ -105,20 +162,17 @@ build_site() {
 	echo "site: $SITE_OUT"
 }
 
-build_busybox() {
-	not_implemented busybox "its shell and init call vfork(), which this system cannot provide; needs patches"
-}
-
 case "${1:-all}" in
 all)
 	build_toolchain
 	build_musl
+	build_headers
 	build_user
+	build_busybox
 	build_initramfs
 	build_kernel
 	build_site
-	echo "skipped: busybox (not implemented yet, see README.md)"
 	;;
-toolchain|musl|user|initramfs|kernel|site|busybox) "build_$1" ;;
-*) echo "usage: $0 [all|toolchain|musl|user|initramfs|kernel|site|busybox]" >&2; exit 1 ;;
+toolchain|musl|headers|user|busybox|initramfs|kernel|site) "build_$1" ;;
+*) echo "usage: $0 [all|toolchain|musl|headers|user|busybox|initramfs|kernel|site]" >&2; exit 1 ;;
 esac

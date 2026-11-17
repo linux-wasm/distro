@@ -1,8 +1,10 @@
-uname
-echo musl says hello
-ls /
-cat /etc/motd
-run /init one two
-run /nonexistent
-run /bin/selftest
+uname -sm
+echo busybox says hello
+ls /etc
+cat /etc/motd | grep -c WebAssembly
+X=$(hostname); echo "host is $X"
+for i in 1 2 3; do echo loop $i; done
+if [ -d /proc/1 ]; then echo proc-mounted; fi
+ls /nonexistent; echo "status $?"
+/bin/selftest | tail -n 1
 poweroff
