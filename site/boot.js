@@ -1,7 +1,7 @@
 // Entry point of the page: make sure it is cross-origin isolated, then
 // start the kernel host (host.js, taken from the kernel tree at build time).
 //
-// If the server already sends the COOP/COEP headers (scripts/serve.sh) the
+// If the server already sends the COOP/COEP headers (scripts/serve.mjs) the
 // page is isolated from the start. Otherwise (GitHub Pages) install sw.js,
 // which adds them, and reload once so that this document is served by it.
 

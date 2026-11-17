@@ -30,12 +30,12 @@ BusyBox is the upstream release; it has needed no patches so far
 
 ## Usage
 
-Requirements: git, docker (or podman), node >= 20, python3.
+Requirements: git, docker (or podman), node >= 20.
 
 ```sh
 scripts/build.sh      # toolchain image, musl, headers, user programs, BusyBox, initramfs, kernel, site
 scripts/test.sh       # headless boot test: types shell commands, checks the output
-scripts/serve.sh      # http://127.0.0.1:8080/
+scripts/serve.mjs     # http://127.0.0.1:8080/
 ```
 
 `scripts/build.sh <step>` runs one step (`toolchain`, `musl`, `headers`,
@@ -47,12 +47,12 @@ built goes to `work/` (ignored by git).
 | Path | Contents |
 |---|---|
 | `sources.env` | Pinned kernel and musl commits, BusyBox release |
-| `scripts/` | `fetch.sh`, `build.sh`, `test.sh`, `serve.sh`, and `wasm-cc`, the compiler driver for user programs |
+| `scripts/` | `fetch.sh`, `build.sh`, `test.sh`, `serve.mjs`, and `wasm-cc`, the compiler driver for user programs |
 | `busybox/config` | BusyBox options enabled on top of allnoconfig |
 | `kernel.config` | Kernel options enabled on top of the kernel's tinyconfig |
 | `user/` | The distro's own files: `inittab`, `motd`, and `selftest.c` (`/bin/selftest`) |
 | `tests/` | What the boot test types (`boot-input.txt`) and expects (`boot-expect.txt`) |
-| `site/` | The web page and the service worker |
+| `site/` | The web page: console, keyboard, worker glue and the service worker |
 | `patches/` | Patches for upstream projects that have no fork here |
 
 ## Building your own programs
@@ -64,16 +64,17 @@ added to the initramfs list in `scripts/build.sh`.
 
 ## The web page
 
-`site/` is the page; `scripts/build.sh site` combines it with the kernel's
-reference host scripts (`tools/wasm/host/` in the kernel tree) and
+`site/` is the page (`index.html`, `boot.js`, `host.js`, `worker.js`,
+`sw.js`); `scripts/build.sh site` combines it with the kernel's host
+scripts (`tools/wasm/host/` in the kernel tree: the part shared with node) and
 `vmlinux.wasm` into `work/site/`, a plain static site.
 
 The kernel needs SharedArrayBuffer, which browsers only give to
 cross-origin isolated pages (`Cross-Origin-Opener-Policy: same-origin` and
-`Cross-Origin-Embedder-Policy: require-corp`). `scripts/serve.sh` sends
+`Cross-Origin-Embedder-Policy: require-corp`). `scripts/serve.mjs` sends
 those headers. GitHub Pages cannot, so `site/sw.js`, a service worker, adds
 them and `site/boot.js` reloads the page once after installing it.
-`scripts/serve.sh --plain` serves without the headers to test that path.
+`scripts/serve.mjs --plain` serves without the headers to test that path.
 
 The CI workflow deploys `work/site/` to GitHub Pages from `main`.
 
@@ -105,8 +106,7 @@ distro needs to change).
 3. BusyBox. Done: init, hush and a basic applet set, unpatched.
 4. Kernel: signal handlers (Ctrl-C, job control).
 5. A real terminal on the page (escape sequences, line editing with arrow
-   keys); today `site/` is a plain text console around the kernel's
-   reference host scripts.
+   keys); today `site/` is a plain text console.
 6. An initramfs handed over by the host instead of built into the kernel,
    more applets, storage, networking.
 
