@@ -1,6 +1,6 @@
 /*
- * selftest: checks that parts of libc and the kernel that the demo init
- * does not touch work on this system. Run it with "run /bin/selftest".
+ * selftest: checks parts of libc and the kernel on this system from a
+ * real program. Run it from the shell: /bin/selftest
  *
  * Every check prints one line, "ok <name>" or "FAIL <name>"; the exit
  * status is the number of failures.
@@ -10,10 +10,12 @@
 #include <fcntl.h>
 #include <pthread.h>
 #include <setjmp.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/time.h>
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
@@ -211,6 +213,149 @@ static void test_vfork(void)
 					    WEXITSTATUS(status) == 44);
 }
 
+/*
+ * Signal handlers. The kernel calls them when a system call returns, so
+ * every test below makes one after the signal has been sent.
+ */
+static volatile sig_atomic_t got_signal, got_siginfo, got_sigchld, alarms;
+static int alarm_pipe[2];
+static jmp_buf signal_jb;
+
+static void on_signal(int sig)
+{
+	got_signal = sig;
+}
+
+static void on_siginfo(int sig, siginfo_t *si, void *ctx)
+{
+	got_siginfo = si->si_signo == sig && si->si_pid == getpid() && ctx != 0;
+}
+
+static void on_sigchld(int sig)
+{
+	got_sigchld++;
+}
+
+static void on_jump(int sig)
+{
+	longjmp(signal_jb, sig);
+}
+
+static void arm_alarm(void)
+{
+	struct itimerval it = { { 0, 0 }, { 0, 20 * 1000 } };
+
+	setitimer(ITIMER_REAL, &it, 0);
+}
+
+/*
+ * With alarm_again set, the first alarm only interrupts and the second
+ * one ends the read().
+ */
+static volatile sig_atomic_t alarm_again;
+
+static void on_alarm(int sig)
+{
+	if (++alarms == 2)
+		write(alarm_pipe[1], "x", 1);
+	else if (alarm_again)
+		arm_alarm();
+}
+
+static void test_signals(void)
+{
+	struct sigaction sa = { 0 };
+	sigset_t set;
+	volatile int jumps = 0;
+	int status = 0;
+	char c = 0;
+	ssize_t n;
+	pid_t pid;
+
+	signal(SIGUSR1, on_signal);
+	check("raise runs the handler", !raise(SIGUSR1) && got_signal == SIGUSR1);
+	check("mask restored after the handler", !sigprocmask(SIG_BLOCK, 0, &set) &&
+						 !sigismember(&set, SIGUSR1));
+
+	sa.sa_sigaction = on_siginfo;
+	sa.sa_flags = SA_SIGINFO;
+	sigaction(SIGUSR2, &sa, 0);
+	check("SA_SIGINFO handler gets siginfo and context",
+	      !kill(getpid(), SIGUSR2) && got_siginfo);
+
+	/* A blocked signal is delivered when it is unblocked. */
+	got_signal = 0;
+	sigemptyset(&set);
+	sigaddset(&set, SIGUSR1);
+	sigprocmask(SIG_BLOCK, &set, 0);
+	raise(SIGUSR1);
+	check("blocked signal stays pending", got_signal == 0);
+	sigprocmask(SIG_UNBLOCK, &set, 0);
+	check("delivered when unblocked", got_signal == SIGUSR1);
+
+	/* Ignored and reset to default. */
+	signal(SIGUSR1, SIG_IGN);
+	check("SIG_IGN", !raise(SIGUSR1));
+
+	/*
+	 * A blocking read() interrupted by a handler: restarted with
+	 * SA_RESTART (it then sees the byte the second alarm writes),
+	 * EINTR without.
+	 */
+	check("pipe for alarms", !pipe(alarm_pipe));
+	sa.sa_handler = on_alarm;
+	sa.sa_flags = SA_RESTART;
+	sigaction(SIGALRM, &sa, 0);
+	alarm_again = 1;
+	arm_alarm();
+	n = read(alarm_pipe[0], &c, 1);
+	check("SA_RESTART: read restarted after the handler",
+	      n == 1 && c == 'x' && alarms == 2);
+
+	alarms = 0;
+	alarm_again = 0;
+	sa.sa_flags = 0;
+	sigaction(SIGALRM, &sa, 0);
+	arm_alarm();
+	n = read(alarm_pipe[0], &c, 1);
+	check("no SA_RESTART: read fails with EINTR",
+	      n == -1 && errno == EINTR && alarms == 1);
+	signal(SIGALRM, SIG_DFL);
+	close(alarm_pipe[0]);
+	close(alarm_pipe[1]);
+
+	/*
+	 * longjmp out of a handler, many times: each one abandons a system
+	 * call inside the kernel, which must not pile anything up.
+	 */
+	sa.sa_handler = on_jump;
+	sa.sa_flags = SA_NODEFER;
+	sigaction(SIGUSR1, &sa, 0);
+	if (setjmp(signal_jb) == SIGUSR1)
+		jumps++;
+	if (jumps < 2000) {
+		raise(SIGUSR1);
+		check("longjmp out of a handler: raise returned", 0);
+	}
+	check("longjmp out of a handler x2000", jumps == 2000 && getpid() > 0);
+	signal(SIGUSR1, SIG_DFL);
+
+	/* A child killed by a signal, and SIGCHLD for it. */
+	sa.sa_handler = on_sigchld;
+	sa.sa_flags = SA_RESTART;
+	sigaction(SIGCHLD, &sa, 0);
+	pid = vfork();
+	if (pid == 0) {
+		execl("/bin/sleep", "sleep", "30", (char *)0);
+		_exit(127);
+	}
+	check("kill child", pid > 0 && !kill(pid, SIGTERM));
+	check("child terminated by SIGTERM", waitpid(pid, &status, 0) == pid &&
+					     WIFSIGNALED(status) && WTERMSIG(status) == SIGTERM);
+	check("SIGCHLD handler ran", got_sigchld == 1);
+	signal(SIGCHLD, SIG_DFL);
+}
+
 int main(void)
 {
 	test_setjmp();
@@ -220,6 +365,7 @@ int main(void)
 	test_time();
 	test_threads();
 	test_vfork();
+	test_signals();
 
 	if (failures)
 		printf("selftest: %d FAILED\n", failures);

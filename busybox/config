@@ -14,6 +14,9 @@ FEATURE_EDITING
 HUSH
 SH_IS_HUSH
 HUSH_INTERACTIVE
+# Job control: Ctrl-C ends the foreground command only, Ctrl-Z stops it,
+# and the jobs, fg and bg builtins exist.
+HUSH_JOB
 HUSH_IF
 HUSH_LOOPS
 HUSH_CASE
@@ -34,6 +37,9 @@ HUSH_TYPE
 # init
 INIT
 FEATURE_USE_INITTAB
+# The shell started from inittab gets the console as its controlling
+# terminal; without one the tty has nobody to send Ctrl-C to.
+FEATURE_INIT_SCTTY
 POWEROFF
 HALT
 REBOOT
