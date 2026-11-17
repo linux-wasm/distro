@@ -14,6 +14,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -168,6 +169,48 @@ static void test_threads(void)
 	check("mutex-protected counter", counter == 2000);
 }
 
+/*
+ * vfork: the child runs in this function, on this stack, until it execs or
+ * exits; then vfork() returns a second time, in the parent, with its pid.
+ */
+static void test_vfork(void)
+{
+	volatile int marker = 1;
+	int status = 0;
+	pid_t pid;
+
+	/* A child that exits without exec. */
+	pid = vfork();
+	if (pid == 0) {
+		marker = 2;	/* shared memory: the parent must see this */
+		_exit(33);
+	}
+	check("vfork returns the child pid", pid > 0 && pid != getpid());
+	check("vfork child ran first, sharing memory", marker == 2);
+	check("vfork child exit status", waitpid(pid, &status, 0) == pid &&
+					 WIFEXITED(status) && WEXITSTATUS(status) == 33);
+
+	/* A child that execs: /init prints its arguments and returns argc-1. */
+	pid = vfork();
+	if (pid == 0) {
+		execl("/init", "/init", "via", "vfork", (char *)0);
+		_exit(127);
+	}
+	check("vfork + exec returns the child pid", pid > 0);
+	check("exec'd child exit status", waitpid(pid, &status, 0) == pid &&
+					  WIFEXITED(status) && WEXITSTATUS(status) == 2);
+
+	/* A child whose exec fails stays the child and can still exit. */
+	pid = vfork();
+	if (pid == 0) {
+		execl("/nonexistent", "nonexistent", (char *)0);
+		_exit(errno == ENOENT ? 44 : 45);
+	}
+	check("failed exec in vfork child", pid > 0 &&
+					    waitpid(pid, &status, 0) == pid &&
+					    WEXITSTATUS(status) == 44);
+}
+
 int main(void)
 {
 	test_setjmp();
@@ -176,6 +219,7 @@ int main(void)
 	test_malloc();
 	test_time();
 	test_threads();
+	test_vfork();
 
 	if (failures)
 		printf("selftest: %d FAILED\n", failures);

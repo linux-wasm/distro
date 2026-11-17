@@ -89,11 +89,11 @@ distro needs to change).
 1. Kernel: user mode. Done: system calls, wasm binfmt, clone with an entry
    function, execve, console input and output.
 2. musl. Done: builds, runs the demo init; `/bin/selftest` covers setjmp,
-   files, pipes, malloc, time and threads. Open: no libc test suite run.
+   files, pipes, malloc, time, threads and vfork. Open: no libc test suite
+   run.
 3. Kernel: signal handlers (Ctrl-C, job control).
-4. BusyBox. Its shell and init call `vfork()`, which cannot exist here
-   (a child cannot resume in its parent's wasm call stack); they need
-   patches to use `posix_spawn`, or a libc `vfork` built on setjmp.
+4. BusyBox. `vfork()` now exists (the child borrows the parent's thread),
+   so its nommu code paths should apply; not attempted yet.
 5. Web front end with a real terminal. Today `site/` is a log viewer with
    keyboard input around the kernel's reference host scripts.
 

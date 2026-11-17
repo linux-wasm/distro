@@ -18,11 +18,15 @@ exited with status 2
 # run /nonexistent
 /nonexistent: No such file or directory
 # run /bin/selftest (user/selftest.c): setjmp, files, pipes, malloc, time,
-# threads. It prints "ok"/"FAIL" per check; these are the summary lines.
+# threads, vfork. It prints "ok"/"FAIL" per check; these are the summary lines.
 ok setjmp/longjmp
 ok pwrite at 5 GiB
 ok time() after 2025
 ok mutex-protected counter
+ok vfork child exit status
+: via vfork
+ok exec'd child exit status
+ok failed exec in vfork child
 selftest: all passed
 exited with status 0
 # poweroff
