@@ -11,17 +11,19 @@ browser tab; rebuilt from `main` on every push).
 BusyBox (unpatched 1.38.0, NOMMU configuration with the hush shell) and a
 test program, packs them into an initramfs, builds the kernel around it
 and assembles the web page. BusyBox `init` runs `/etc/inittab` and starts
-an interactive shell with pipes, loops, command substitution and the
-applets listed in `busybox/config`.
+an interactive shell with pipes, loops, command substitution, Ctrl-C, job
+control (Ctrl-Z, `jobs`, `fg`, `bg`, `&`) and the applets listed in
+`busybox/config`.
 
-Not there: Ctrl-C and job control (the kernel does not run signal handlers
-yet), networking, persistent storage, and anything beyond that applet list.
+Not there: networking, persistent storage, and anything beyond that applet
+list. A program that computes without making system calls cannot be
+interrupted, and freezes the machine while it runs.
 
 ## Repositories
 
 | Repository | Role | State |
 |---|---|---|
-| [linux-wasm/linux](https://github.com/linux-wasm/linux) | Kernel with `arch/wasm` | runs user programs: syscalls, clone, vfork, execve, console input |
+| [linux-wasm/linux](https://github.com/linux-wasm/linux) | Kernel with `arch/wasm` | runs user programs: syscalls, clone, vfork, execve, signals, console input |
 | [linux-wasm/musl](https://github.com/linux-wasm/musl) | C library | enough for BusyBox and `/bin/selftest`; no libc test suite run |
 | linux-wasm/distro (this) | Puts it together | builds, boot-tests and publishes kernel + musl + BusyBox |
 
@@ -34,7 +36,7 @@ Requirements: git, docker (or podman), node >= 20.
 
 ```sh
 scripts/build.sh      # toolchain image, musl, headers, user programs, BusyBox, initramfs, kernel, site
-scripts/test.sh       # headless boot test: types shell commands, checks the output
+scripts/test.sh       # headless boot test: types shell commands and Ctrl-C/Ctrl-Z, checks the output
 scripts/serve.mjs     # http://127.0.0.1:8080/
 ```
 
@@ -100,11 +102,14 @@ distro needs to change).
 ## Roadmap
 
 1. Kernel: user mode. Done: system calls, wasm binfmt, clone, vfork,
-   execve, console input and output.
+   execve, signal handlers, console input and output.
 2. musl. Done: enough for BusyBox; `/bin/selftest` covers setjmp, files,
-   pipes, malloc, time, threads and vfork. Open: no libc test suite run.
-3. BusyBox. Done: init, hush and a basic applet set, unpatched.
-4. Kernel: signal handlers (Ctrl-C, job control).
+   pipes, malloc, time, threads, vfork and signals. Open: no libc test
+   suite run.
+3. BusyBox. Done: init, hush with job control and a basic applet set,
+   unpatched.
+4. Kernel: signal handlers. Done: Ctrl-C and job control work. Open: a
+   program that makes no system calls cannot be signalled.
 5. A real terminal on the page (escape sequences, line editing with arrow
    keys); today `site/` is a plain text console.
 6. An initramfs handed over by the host instead of built into the kernel,
