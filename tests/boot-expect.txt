@@ -1,6 +1,7 @@
 # What the boot test must see, in order: fixed strings, one per line, each
 # on a later line of the log than the previous one. scripts/test.sh types
-# the commands of tests/boot-input.txt at the first shell prompt.
+# the commands of tests/boot-input.txt at the first shell prompt (a line
+# "@wait TEXT" there delays what follows until TEXT has been printed).
 Linux version
 Run /init as init process
 init started: BusyBox
@@ -26,8 +27,17 @@ proc-mounted
 No such file or directory
 status 1
 # /bin/selftest (user/selftest.c): setjmp, files, pipes, malloc, time,
-# threads, vfork
+# threads, vfork, signals
 selftest: all passed
+# Ctrl-C: typed once "sleep 100" is running, it ends the command with
+# SIGINT and the shell carries on.
+started
+status 130
+# Job control: Ctrl-Z stops "sleep 2", the shell lists it, and fg lets it
+# run to its end.
+stop me
+Stopped
+fg status 0
 # poweroff through BusyBox init
 Requesting system poweroff
 reboot: Power down

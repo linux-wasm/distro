@@ -2,19 +2,37 @@
 # Boot the built system headless under node, type the commands of
 # tests/boot-input.txt at the first prompt, and check the console log
 # against tests/boot-expect.txt.
+#
+#   scripts/test.sh [extra node-run.mjs options]
 set -eu
 . "$(dirname "$0")/common.sh"
 
 log="$(mktemp)"
 trap 'rm -f "$log"' EXIT
 
-# node-run.mjs turns the two characters \n into a newline.
-input="$(awk '{ printf "%s\\n", $0 }' "$DISTRO/tests/boot-input.txt")"
+# Build node-run.mjs's --input/--input-after pairs from the input file:
+# each line is typed followed by a newline (node-run.mjs turns the two
+# characters \n into one, and \xHH into that byte); "@wait TEXT" holds
+# back what follows until TEXT has been printed.
+chunk=
+after='# '
+while IFS= read -r line; do
+	case "$line" in
+	'@wait '*)
+		set -- "$@" --input "$chunk" --input-after "$after"
+		chunk=
+		after="${line#@wait }"
+		;;
+	*)
+		chunk="$chunk$line\\n"
+		;;
+	esac
+done < "$DISTRO/tests/boot-input.txt"
+set -- "$@" --input "$chunk" --input-after "$after"
 
 status=0
 node "$KERNEL_TOOLS/host/node-run.mjs" --kernel "$KERNEL_OUT/vmlinux.wasm" \
-	--timeout "${BOOT_TIMEOUT:-30}" --input "$input" --input-after '# ' \
-	"$@" > "$log" 2>&1 || status=$?
+	--timeout "${BOOT_TIMEOUT:-30}" "$@" > "$log" 2>&1 || status=$?
 
 fail=0
 line=0

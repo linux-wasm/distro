@@ -7,4 +7,14 @@ for i in 1 2 3; do echo loop $i; done
 if [ -d /proc/1 ]; then echo proc-mounted; fi
 ls /nonexistent; echo "status $?"
 /bin/selftest | tail -n 1
+sh -c 'echo sta""rted; exec sleep 100'
+@wait started
+\x03
+echo "status $?"
+sh -c 'echo sto""p me; exec sleep 2'
+@wait stop me
+\x1a
+jobs
+fg
+echo "fg status $?"
 poweroff
