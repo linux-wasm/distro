@@ -7,28 +7,29 @@ BusyBox patches, the initramfs, and later the web front end.
 **Live: https://linux-wasm.github.io/distro/** (the kernel booting in your
 browser tab; rebuilt from `main` on every push).
 
-**Status: boots to a BusyBox shell on a layered, persistent root file
-system, in a real terminal.** `scripts/build.sh` builds musl, BusyBox
-(unpatched 1.38.0, with the ash shell) and a test
-program, packs them into a read-only base image, builds the kernel and
-assembles the web page. At boot the base (`/dev/vda`, erofs, loaded over
-HTTP and kept in memory) gets a writable layer on top (`/dev/vdb`, ext4,
-stored by the browser in the origin private file system) with overlayfs;
-BusyBox `init` then runs `/etc/inittab` and starts an interactive shell
-with pipes, loops, command substitution, Ctrl-C, job control and the
-applets listed in `busybox/config` (including `vi`, `less`, `top`).
-The page shows the console in xterm.js and tells the kernel its size.
+**Status: boots to bash on a layered, persistent root file system, in a
+real terminal, with GNU userland.** `scripts/build.sh` builds musl,
+BusyBox (unpatched 1.38.0: init and the small tools), the packages of
+[linux-wasm/ports](https://github.com/linux-wasm/ports) (bash, coreutils,
+ncurses, grep, sed, gawk, findutils, diffutils, tar, gzip, make, less,
+nano) and a test program, packs them into a read-only base image, builds
+the kernel and assembles the web page. At boot the base (`/dev/vda`,
+erofs, loaded over HTTP and kept in memory) gets a writable layer on top
+(`/dev/vdb`, ext4, stored by the browser in the origin private file
+system) with overlayfs; BusyBox `init` then runs `/etc/inittab` and
+starts bash as a login shell. The page shows the console in xterm.js and
+tells the kernel its size.
 
 What you add, change or delete is kept between visits; a newer base does
 not replace it ("reset disk" on the page deletes it). The tab can be
 closed at any time: changes reach the disk within about a second, and
 ext4's journal copes with the cut.
 
-`fork()` works: ash runs subshells, pipelines and command substitution in
-forked copies of itself, like on any Linux.
+`fork()` works: the shell runs subshells, pipelines and command
+substitution in forked copies of itself, like on any Linux.
 
-Not there: memory protection between programs, dynamic linking,
-networking, and anything beyond that applet list. A program that computes
+Not there: memory protection between programs, dynamic linking (every
+program is linked statically), networking, a package manager. A program that computes
 without making system calls cannot be interrupted, and freezes the machine
 while it runs. See the roadmap for what stands between this and a
 distribution with systemd.
@@ -39,6 +40,7 @@ distribution with systemd.
 |---|---|---|
 | [linux-wasm/linux](https://github.com/linux-wasm/linux) | Kernel with `arch/wasm` | runs user programs: syscalls, clone, fork, vfork, execve, signals, virtio disks |
 | [linux-wasm/musl](https://github.com/linux-wasm/musl) | C library | enough for BusyBox and `/bin/selftest`; no libc test suite run |
+| [linux-wasm/ports](https://github.com/linux-wasm/ports) | Packages | 13 upstream packages, unpatched; exercised by this repository's boot test |
 | linux-wasm/distro (this) | Puts it together | builds, boot-tests and publishes kernel + musl + BusyBox |
 
 BusyBox is the upstream release; it has needed no patches so far
@@ -49,20 +51,20 @@ BusyBox is the upstream release; it has needed no patches so far
 Requirements: git, docker (or podman), node >= 20.
 
 ```sh
-scripts/build.sh      # toolchain image, musl, headers, user programs, BusyBox, root file system, kernel, site
+scripts/build.sh      # toolchain image, musl, headers, user programs, BusyBox, packages, root file system, kernel, site
 scripts/test.sh       # headless boot tests: shell commands, Ctrl-C/Ctrl-Z, and a second boot that finds the first one's changes
 scripts/serve.mjs     # http://127.0.0.1:8080/
 ```
 
 `scripts/build.sh <step>` runs one step (`toolchain`, `musl`, `headers`,
-`user`, `busybox`, `rootfs`, `kernel`, `site`). Everything fetched or
+`user`, `busybox`, `ports`, `rootfs`, `kernel`, `site`). Everything fetched or
 built goes to `work/` (ignored by git).
 
 ## Layout
 
 | Path | Contents |
 |---|---|
-| `sources.env` | Pinned kernel and musl commits, BusyBox release, xterm.js packages |
+| `sources.env` | Pinned kernel, musl and ports commits, BusyBox release, xterm.js packages |
 | `scripts/` | `fetch.sh`, `build.sh`, `test.sh`, `serve.mjs`, and `wasm-cc`, the compiler driver for user programs |
 | `busybox/config` | BusyBox options enabled on top of allnoconfig |
 | `kernel.config` | Kernel options enabled on top of the kernel's tinyconfig |
@@ -121,7 +123,7 @@ release. Bumping one is its own commit, e.g.
 Point the scripts at local checkouts instead of the pinned commits:
 
 ```sh
-KERNEL_DIR=~/src/linux MUSL_DIR=~/src/musl scripts/build.sh
+KERNEL_DIR=~/src/linux MUSL_DIR=~/src/musl PORTS_DIR=~/src/ports scripts/build.sh
 KERNEL_DIR=~/src/linux scripts/test.sh
 ```
 
@@ -157,9 +159,13 @@ distro needs to change).
    - Interrupting a program that computes (signals, time slices):
      compiler-inserted polling in user programs.
    - Shared libraries and `dlopen`, `mmap` of files.
-8. A package repository: a new repository of build recipes (ncurses,
-   bash, coreutils, util-linux, ... as wasm packages), a package manager,
-   and a base image made of packages instead of one BusyBox.
+8. Packages. Done: linux-wasm/ports with 13 packages, bash as the
+   shell. Open: more of what a distribution consists of (util-linux,
+   procps, a compiler would need far more), a package manager with a
+   repository served over HTTP instead of everything in the base image,
+   running the packages' test suites, and a cache of compiled programs in
+   the host (every `exec` compiles the program again; about 20 ms for
+   coreutils).
 9. systemd. Besides 7 it needs cgroups, unix sockets, netlink and more
    of the kernel configuration; the event interfaces (epoll, signalfd,
    timerfd, inotify) are enabled already. systemd supports musl since
