@@ -59,3 +59,10 @@ container_run() {
 # needs the compile flags:
 WASM_CFLAGS="-fPIC -matomics -mbulk-memory -mexception-handling -O2"
 LLVM=/usr/lib/llvm-19/bin
+
+# Size of the (initially empty) file system for the user's changes, and
+# the kernel command line: the read-only base is the root, and its
+# /sbin/overlay-init puts the changes on top before starting init. Built
+# into the kernel; the host can pass another one.
+DATA_SIZE_MIB="${DATA_SIZE_MIB:-256}"
+KERNEL_CMDLINE="root=/dev/vda ro init=/sbin/overlay-init"

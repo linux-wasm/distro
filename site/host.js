@@ -1,84 +1,79 @@
-// Browser glue: loads the kernel, creates the machine, shows its console.
+// Browser glue: loads the kernel, creates the machine with its disks and
+// connects its console to a terminal emulator (xterm.js, loaded by
+// index.html as the globals Terminal, FitAddon and WebglAddon).
 import { Machine } from "./machine.js";
 
-const consoleEl = document.getElementById("console");
+const notesEl = document.getElementById("notes");
 const statusEl = document.getElementById("status");
 const params = new URLSearchParams(location.search);
 
 const kernelUrl = params.get("kernel") ?? "vmlinux.wasm";
 const memoryMiB = Number(params.get("mem") ?? 128);
 const cmdline = params.get("cmdline") ?? "";
+// The file in the origin private file system that holds the user's
+// changes to the file system (the kernel's /dev/vdb).
+const DATA_FILE = "data.img";
+const RESET = "linux-wasm-reset-disk";
 
-// Console output is appended as the kernel wrote it, with the two control
-// characters a tty echo produces interpreted: carriage returns are dropped
-// (the tty sends "\r\n") and a backspace removes the previous character of
-// the current line. Anything the host itself has to say goes in a separately
-// styled "[host]" line so the two cannot be confused.
-function kernelOutput(text) {
-  for (const part of text.replaceAll("\r", "").split(/(\x08)/)) {
-    if (part === "\b") {
-      const last = consoleEl.lastChild;
-      if (last?.nodeType === Node.TEXT_NODE && !last.data.endsWith("\n"))
-        last.data = last.data.slice(0, -1);
-    } else if (part) {
-      if (consoleEl.lastChild?.nodeType === Node.TEXT_NODE)
-        consoleEl.lastChild.data += part;
-      else consoleEl.append(part);
-    }
-  }
-  consoleEl.scrollTop = consoleEl.scrollHeight;
-}
-
-// Keyboard: translate key presses on the console into the bytes a terminal
-// would send. The kernel's tty does the echoing and line editing.
-function keyToInput(event) {
-  if (event.metaKey || event.altKey) return null;
-  if (event.ctrlKey)
-    return /^[a-z]$/i.test(event.key)
-      ? String.fromCharCode(event.key.toUpperCase().charCodeAt(0) - 64)
-      : null;
-  switch (event.key) {
-    case "Enter":
-      return "\n";
-    case "Backspace":
-      return "\x7f";
-    case "Tab":
-      return "\t";
-    case "Escape":
-      return "\x1b";
-  }
-  return event.key.length === 1 ? event.key : null;
-}
-
-function attachKeyboard(machine) {
-  consoleEl.tabIndex = 0;
-  consoleEl.focus();
-  consoleEl.addEventListener("keydown", (event) => {
-    // Leave copy (Ctrl+C with a selection) to the browser.
-    if (event.ctrlKey && event.key.toLowerCase() === "c" &&
-        !getSelection().isCollapsed)
-      return;
-    const input = keyToInput(event);
-    if (input === null) return;
-    event.preventDefault();
-    machine.input(input);
-  });
-  consoleEl.addEventListener("paste", (event) => {
-    event.preventDefault();
-    machine.input(event.clipboardData.getData("text"));
-  });
-}
-
+// Everything the terminal shows is output of the kernel or of programs.
+// What the page itself has to say goes below it, so that the two cannot
+// be confused.
 function hostNote(text, isError = false) {
   const line = document.createElement("span");
-  line.className = isError ? "host error" : "host";
+  if (isError) line.className = "error";
   line.textContent = `[host] ${text}\n`;
-  consoleEl.append(line);
-  consoleEl.scrollTop = consoleEl.scrollHeight;
+  notesEl.append(line);
+  notesEl.scrollTop = notesEl.scrollHeight;
 }
 
 function setStatus(text) {
   statusEl.textContent = text;
+}
+
+function createTerminal() {
+  const terminal = new Terminal({
+    cursorBlink: true,
+    fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
+    fontSize: 14,
+    scrollback: 5000,
+    theme: { background: "#111111", foreground: "#dddddd" },
+  });
+  const fit = new FitAddon.FitAddon();
+  terminal.loadAddon(fit);
+  terminal.open(document.getElementById("terminal"));
+  try {
+    // Draws on a canvas; without WebGL the DOM renderer stays in use.
+    const webgl = new WebglAddon.WebglAddon();
+    webgl.onContextLoss(() => webgl.dispose());
+    terminal.loadAddon(webgl);
+  } catch {
+    // The DOM renderer it is.
+  }
+  fit.fit();
+  new ResizeObserver(() => fit.fit()).observe(document.getElementById("terminal"));
+  terminal.focus();
+  return terminal;
+}
+
+function createWorker(file) {
+  const worker = new Worker(new URL(file, import.meta.url), { type: "module" });
+  const handle = {
+    postMessage: (msg) => worker.postMessage(msg),
+    terminate: () => worker.terminate(),
+    onmessage: null,
+    onerror: null,
+  };
+  worker.onmessage = (e) => handle.onmessage?.(e.data);
+  worker.onerror = (e) => handle.onerror?.(e);
+  return handle;
+}
+
+async function resetDisk() {
+  const root = await navigator.storage.getDirectory();
+  for (const name of [`${DATA_FILE}.ready`, DATA_FILE])
+    await root.removeEntry(name).catch((e) => {
+      if (e.name !== "NotFoundError") throw e;
+    });
 }
 
 async function main() {
@@ -93,28 +88,57 @@ async function main() {
   }
 
   setStatus("loading kernel");
-  const module = await WebAssembly.compileStreaming(fetch(kernelUrl));
+  const [module, build] = await Promise.all([
+    WebAssembly.compileStreaming(fetch(kernelUrl)),
+    fetch("build.json").then((r) => r.json()),
+  ]);
   hostNote(`loaded ${kernelUrl}; ${memoryMiB} MiB memory; cmdline "${cmdline}"`);
+  // Ask the browser not to evict the stored changes under storage pressure.
+  navigator.storage?.persist?.().catch(() => {});
 
-  const machine = new Machine({
+  const terminal = createTerminal();
+  let machine;
+
+  // The running machine holds the file open, so it is deleted on the way
+  // into the next one.
+  document.getElementById("reset").addEventListener("click", () => {
+    if (!confirm("Delete all stored changes to the file system and restart?"))
+      return;
+    sessionStorage.setItem(RESET, "1");
+    machine.stop();
+    location.reload();
+  });
+  if (sessionStorage.getItem(RESET)) {
+    sessionStorage.removeItem(RESET);
+    await resetDisk();
+    hostNote("stored changes deleted");
+  }
+
+  machine = new Machine({
     module,
     memoryMiB,
     cmdline,
-    createWorker() {
-      const worker = new Worker(new URL("./worker.js", import.meta.url), {
-        type: "module",
-      });
-      const handle = {
-        postMessage: (msg) => worker.postMessage(msg),
-        terminate: () => worker.terminate(),
-        onmessage: null,
-        onerror: null,
-      };
-      worker.onmessage = (e) => handle.onmessage?.(e.data);
-      worker.onerror = (e) => handle.onerror?.(e);
-      return handle;
-    },
-    onConsole: kernelOutput,
+    // The layers of the root file system, see scripts/build.sh rootfs:
+    // the base as shipped, and the user's changes.
+    disks: [
+      {
+        bytes: build.base_bytes,
+        readOnly: true,
+        backend: { kind: "http", url: new URL("base.erofs", location.href).href },
+      },
+      {
+        bytes: build.data_bytes,
+        backend: {
+          kind: "opfs",
+          name: DATA_FILE,
+          bytes: build.data_bytes,
+          initialUrl: new URL("data.img.gz", location.href).href,
+        },
+      },
+    ],
+    createWorker: () => createWorker("./worker.js"),
+    createDeviceWorker: () => createWorker("./device-worker.js"),
+    onConsoleBytes: (bytes) => terminal.write(bytes),
     onEvent(event) {
       switch (event.type) {
         case "thread-start":
@@ -137,14 +161,28 @@ async function main() {
         case "worker-error":
           hostNote(`worker ${event.id} failed: ${event.message}`, true);
           break;
+        case "device-note":
+          hostNote(`disk ${event.device}: ${event.text}`);
+          break;
+        case "device-error":
+          hostNote(`disk ${event.device} failed: ${event.message}`, true);
+          break;
       }
     },
   });
 
-  attachKeyboard(machine);
+  // Keyboard and paste: the terminal emulator turns them into the bytes a
+  // terminal sends; the kernel's tty does the rest.
+  terminal.onData((data) => machine.input(data));
+  terminal.onBinary((data) =>
+    machine.input(Uint8Array.from(data, (c) => c.charCodeAt(0))),
+  );
+  terminal.onResize(({ cols, rows }) => machine.resize(cols, rows));
+  machine.resize(terminal.cols, terminal.rows);
 
   // For poking at it from the devtools console.
   globalThis.machine = machine;
+  globalThis.terminal = terminal;
   machine.boot();
 }
 

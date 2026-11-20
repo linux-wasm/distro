@@ -1,0 +1,11 @@
+# Second boot of scripts/test.sh, with the disk the boot test wrote to.
+overlay-init: changes are kept on /dev/vdb
+# the new file and the edited one (also the host name now)
+root@changed
+kept
+changed
+# the deleted one
+No such file or directory
+status 1
+reboot: Power down
+[host] machine halted: poweroff

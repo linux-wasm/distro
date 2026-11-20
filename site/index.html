@@ -8,6 +8,7 @@
       name="description"
       content="The Linux kernel, compiled to WebAssembly, booting in this browser tab."
     />
+    <link rel="stylesheet" href="xterm.css" />
     <style>
       html,
       body {
@@ -45,21 +46,29 @@
         display: flex;
         gap: 1em;
       }
-      #console {
+      header button {
+        font: inherit;
+        color: #8ab4f8;
+        background: none;
+        border: 0;
+        padding: 0;
+        cursor: pointer;
+        text-decoration: underline;
+      }
+      #terminal {
         flex: 1;
+        min-height: 0;
+        padding: 0.5em;
+      }
+      #notes {
         margin: 0;
-        padding: 1em;
+        padding: 0 1em;
+        max-height: 30%;
         overflow: auto;
         white-space: pre-wrap;
-        word-break: break-all;
-      }
-      #console:focus {
-        outline: none;
-      }
-      #console .host {
         color: #68a;
       }
-      #console .host.error {
+      #notes .error {
         color: #e66;
       }
     </style>
@@ -69,11 +78,16 @@
       <h1>Linux on WebAssembly</h1>
       <span id="status">starting</span>
       <span class="links">
+        <button id="reset" title="Delete the stored changes to the file system and start again from the base">reset disk</button>
         <a id="build" href="https://github.com/linux-wasm/linux"></a>
         <a href="https://github.com/linux-wasm">source</a>
       </span>
     </header>
-    <pre id="console" aria-label="Kernel console"></pre>
+    <div id="terminal" aria-label="Console"></div>
+    <pre id="notes" aria-label="Messages of the page itself"></pre>
+    <script src="xterm.js"></script>
+    <script src="addon-fit.js"></script>
+    <script src="addon-webgl.js"></script>
     <script type="module" src="boot.js"></script>
   </body>
 </html>

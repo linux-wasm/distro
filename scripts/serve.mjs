@@ -26,6 +26,7 @@ if (!existsSync(root)) {
 }
 
 const types = {
+  ".css": "text/css",
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript",
   ".json": "application/json",

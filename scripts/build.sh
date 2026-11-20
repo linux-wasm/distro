@@ -7,8 +7,8 @@
 #   scripts/build.sh headers    # kernel headers for user space
 #   scripts/build.sh user       # this repository's programs (user/)
 #   scripts/build.sh busybox    # shell, init and the usual commands
-#   scripts/build.sh initramfs  # what goes into the kernel image
-#   scripts/build.sh kernel     # kernel with that initramfs built in
+#   scripts/build.sh rootfs     # the root file system -> work/base.erofs, work/data.img
+#   scripts/build.sh kernel     # the kernel
 #   scripts/build.sh site       # the web page -> work/site/
 #
 # Each step assumes the ones before it have run.
@@ -94,43 +94,49 @@ build_busybox() {
 	echo "busybox: $src/busybox"
 }
 
-# The initramfs is built into the kernel image (CONFIG_INITRAMFS_SOURCE),
-# so it is assembled inside the kernel's output directory, which the kernel
-# build container sees as /out. The list is in usr/gen_init_cpio format.
-build_initramfs() {
-	mkdir -p "$KERNEL_OUT/initramfs"
-	out="$KERNEL_OUT/initramfs"
-	rm -rf "$out"
-	mkdir -p "$out"
-	cp "$USER_OUT"/*.wasm "$DISTRO/user/motd" "$DISTRO/user/inittab" "$out/"
-	cp "$WORK/src/busybox/busybox" "$out/busybox.wasm"
-	{
-		cat <<-'LIST'
-		dir /dev 0755 0 0
-		nod /dev/console 0600 0 0 c 5 1
-		dir /etc 0755 0 0
-		file /etc/motd /out/initramfs/motd 0644 0 0
-		file /etc/inittab /out/initramfs/inittab 0644 0 0
-		dir /tmp 1777 0 0
-		dir /root 0700 0 0
-		dir /proc 0555 0 0
-		dir /bin 0755 0 0
-		dir /sbin 0755 0 0
-		dir /usr 0755 0 0
-		dir /usr/bin 0755 0 0
-		dir /usr/sbin 0755 0 0
-		file /bin/busybox /out/initramfs/busybox.wasm 0755 0 0
-		file /bin/selftest /out/initramfs/selftest.wasm 0755 0 0
-		slink /init /bin/busybox 0777 0 0
-		LIST
+# The root file system has two layers, joined by overlayfs at boot
+# (rootfs/sbin/overlay-init):
+#
+#   base.erofs  read-only: everything the distro ships. Built here from a
+#               directory tree; all files belong to root, and extended
+#               attributes of the build machine (SELinux labels) are
+#               left out (-x -1).
+#   data.img    an empty ext4 file system for what the user adds, changes
+#               and deletes. The host keeps it (the browser: in the origin
+#               private file system); a new base does not replace it.
+build_rootfs() {
+	tree="$WORK/build/rootfs"
+	rm -rf "$tree"
+	mkdir -p "$tree"
+	(
+		cd "$tree"
+		mkdir -p bin sbin usr/bin usr/sbin etc dev proc sys run tmp root \
+			home mnt var/log overlay/base overlay/data overlay/root
+		chmod 1777 tmp
+		chmod 700 root
+		cp -R "$DISTRO"/rootfs/. .
+		cp "$WORK/src/busybox/busybox" bin/busybox
+		for src in "$USER_OUT"/*.wasm; do
+			cp "$src" "bin/$(basename "$src" .wasm)"
+		done
+		chmod 755 bin/* sbin/*
 		# One symlink per applet, as "busybox --install -s" would make.
-		sed 's|.*|slink & /bin/busybox 0777 0 0|' "$WORK/src/busybox/busybox.links"
-	} > "$out/list"
-	echo "initramfs: $KERNEL_OUT/initramfs/list"
+		while read -r link; do
+			ln -s /bin/busybox ".$link"
+		done < "$WORK/src/busybox/busybox.links"
+	)
+	rm -f "$WORK/base.erofs" "$WORK/data.img"
+	container_run sh -ec "
+		mkfs.erofs --quiet --all-root -T 0 -x -1 \
+			-U 00000000-0000-0000-0000-000000000001 \
+			/work/base.erofs /work/build/rootfs
+		mke2fs -q -t ext4 -L data -m 0 /work/data.img ${DATA_SIZE_MIB}M
+	"
+	echo "rootfs: $WORK/base.erofs, $WORK/data.img"
 }
 
 # The kernel is built with its own tooling (tools/wasm/scripts in the
-# kernel tree); this only chooses the output directory and the initramfs.
+# kernel tree); this only chooses the output directory and the configuration.
 build_kernel() {
 	"$KERNEL_TOOLS/scripts/kmake.sh" tinyconfig
 	# Runs in the kernel build container: repository at /linux, KOUT at /out.
@@ -138,7 +144,7 @@ build_kernel() {
 		--user "$(id -u):$(id -g)" \
 		-v "$KERNEL_DIR:/linux" -v "$KERNEL_OUT:/out" -w /linux "$IMAGE" \
 		scripts/config --file /out/.config \
-		--set-str INITRAMFS_SOURCE /out/initramfs/list \
+		--set-str CMDLINE "$KERNEL_CMDLINE" \
 		$(grep -v '^#' "$DISTRO/kernel.config" | sed '/^$/d; s/^/--enable /')
 	"$KERNEL_TOOLS/scripts/kmake.sh" olddefconfig
 	"$KERNEL_TOOLS/scripts/kmake.sh" -j"$(nproc)"
@@ -148,7 +154,7 @@ build_kernel() {
 # The static web site: this repository's page (site/), the kernel's
 # reference host scripts and the kernel image. Deployable as-is to any
 # static host; site/sw.js supplies the COOP/COEP headers where the host
-# cannot.
+# cannot. The empty data image is compressed: it is mostly zeros.
 build_site() {
 	rm -rf "$SITE_OUT"
 	mkdir -p "$SITE_OUT"
@@ -156,8 +162,17 @@ build_site() {
 	# The host code shared with node; the node-*.mjs files stay behind.
 	cp "$KERNEL_TOOLS"/host/*.js "$SITE_OUT/"
 	cp "$KERNEL_OUT/vmlinux.wasm" "$SITE_OUT/"
-	printf '{"kernel_repo": "%s", "kernel_commit": "%s"}\n' \
+	# The terminal emulator (MIT, see sources.env).
+	"$DISTRO/scripts/fetch.sh" xterm
+	cp "$WORK/src/xterm/package/lib/xterm.js" \
+		"$WORK/src/xterm/package/css/xterm.css" \
+		"$WORK/src/xterm-fit/package/lib/addon-fit.js" \
+		"$WORK/src/xterm-webgl/package/lib/addon-webgl.js" "$SITE_OUT/"
+	cp "$WORK/base.erofs" "$SITE_OUT/"
+	gzip -9 -n -c "$WORK/data.img" > "$SITE_OUT/data.img.gz"
+	printf '{"kernel_repo": "%s", "kernel_commit": "%s", "base_bytes": %s, "data_bytes": %s}\n' \
 		"${KERNEL_REPO%.git}" "$(git -C "$KERNEL_DIR" rev-parse HEAD)" \
+		"$(wc -c < "$WORK/base.erofs")" "$(wc -c < "$WORK/data.img")" \
 		> "$SITE_OUT/build.json"
 	echo "site: $SITE_OUT"
 }
@@ -169,10 +184,10 @@ all)
 	build_headers
 	build_user
 	build_busybox
-	build_initramfs
+	build_rootfs
 	build_kernel
 	build_site
 	;;
-toolchain|musl|headers|user|busybox|initramfs|kernel|site) "build_$1" ;;
-*) echo "usage: $0 [all|toolchain|musl|headers|user|busybox|initramfs|kernel|site]" >&2; exit 1 ;;
+toolchain|musl|headers|user|busybox|rootfs|kernel|site) "build_$1" ;;
+*) echo "usage: $0 [all|toolchain|musl|headers|user|busybox|rootfs|kernel|site]" >&2; exit 1 ;;
 esac

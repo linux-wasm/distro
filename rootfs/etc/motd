@@ -1,0 +1,1 @@
+Linux on WebAssembly. Changes to the file system are kept in a layer over the read-only base.

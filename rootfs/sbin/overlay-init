@@ -1,0 +1,41 @@
+#!/bin/sh
+# First program of the system (init= on the kernel command line). The root
+# file system at this point is the read-only base (/dev/vda). Put a
+# writable layer on top of it with overlayfs, make the result the root and
+# start the real init there.
+#
+# The writable layer is the ext4 file system on /dev/vdb, which the host
+# keeps between boots. It holds only the differences to the base: new and
+# changed files, and markers for deleted ones. Without that disk (or if it
+# cannot be mounted) the layer is in memory and lost at power-off.
+export PATH=/usr/sbin:/usr/bin:/sbin:/bin
+mount -t proc proc /proc
+
+# The machine is switched off by closing a browser tab, without warning.
+# Write changes to the disk within about a second instead of the usual
+# five to thirty, so that little is lost when that happens.
+echo 100 > /proc/sys/vm/dirty_writeback_centisecs
+echo 100 > /proc/sys/vm/dirty_expire_centisecs
+
+if mount -t ext4 -o commit=1 /dev/vdb /overlay/data 2>/dev/null; then
+	echo "overlay-init: changes are kept on /dev/vdb"
+else
+	echo "overlay-init: no usable /dev/vdb, changes stay in memory"
+	mount -t tmpfs tmpfs /overlay/data
+fi
+mkdir -p /overlay/data/upper /overlay/data/work
+if ! mount -t overlay overlay \
+	-o lowerdir=/,upperdir=/overlay/data/upper,workdir=/overlay/data/work \
+	/overlay/root; then
+	echo "overlay-init: cannot mount the overlay, staying on the read-only base"
+	umount /proc
+	exec /sbin/init
+fi
+
+umount /proc
+mount --move /dev /overlay/root/dev
+cd /overlay/root
+# The base stays reachable at /overlay/base of the new root, and the
+# writable layer below it at /overlay/base/overlay/data.
+pivot_root . overlay/base
+exec chroot . /sbin/init <dev/console >dev/console 2>&1

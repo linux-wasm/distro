@@ -17,4 +17,9 @@ sh -c 'echo sto""p me; exec sleep 2'
 jobs
 fg
 echo "fg status $?"
+grep -c '^overlay / overlay' /proc/mounts
+echo kept > /root/note; rm /etc/motd; echo changed > /etc/hostname
+ls /etc; cat /overlay/base/etc/hostname
+echo '#!/bin/sh' > /tmp/s; echo 'echo script-$1$1' >> /tmp/s; chmod +x /tmp/s; /tmp/s 7
+ls -1 /dev/pts/ptmx /dev/vda /dev/vdb
 poweroff

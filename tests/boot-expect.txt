@@ -3,9 +3,15 @@
 # the commands of tests/boot-input.txt at the first shell prompt (a line
 # "@wait TEXT" there delays what follows until TEXT has been printed).
 Linux version
-Run /init as init process
+# the disks, and the layered root file system (rootfs/sbin/overlay-init)
+virtio-wasm: 2 host devices
+[vda]
+[vdb]
+Mounted root (erofs filesystem) readonly
+Run /sbin/overlay-init as init process
+overlay-init: changes are kept on /dev/vdb
 init started: BusyBox
-came out of an initramfs
+Changes to the file system are kept
 hush - the humble shell
 # uname -sm
 Linux wasm
@@ -13,7 +19,6 @@ Linux wasm
 busybox says hello
 # ls /etc
 inittab
-motd
 # a pipeline: cat | grep -c
 1
 # command substitution (the shell re-executes itself) and the hostname
@@ -38,6 +43,19 @@ status 130
 stop me
 Stopped
 fg status 0
+# the root is the overlay
+1
+# changes: a new file, a deleted one and an edited one; the base below
+# is untouched
+hostname
+passwd
+linux-wasm
+# a shell script as a program
+script-77
+# devices in /dev
+/dev/pts/ptmx
+/dev/vda
+/dev/vdb
 # poweroff through BusyBox init
 Requesting system poweroff
 reboot: Power down
