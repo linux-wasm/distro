@@ -46,14 +46,87 @@
         display: flex;
         gap: 1em;
       }
-      header button {
+      button,
+      input {
         font: inherit;
+        color: inherit;
+      }
+      header button {
         color: #8ab4f8;
         background: none;
         border: 0;
         padding: 0;
         cursor: pointer;
         text-decoration: underline;
+      }
+      [hidden] {
+        display: none !important;
+      }
+      #boot {
+        flex: 1;
+        overflow: auto;
+        padding: 1.5em 1em;
+      }
+      #boot form {
+        max-width: 44em;
+        margin: 0 auto;
+      }
+      #boot fieldset {
+        border: 1px solid #333;
+        margin: 0 0 1em;
+        padding: 0.75em 1em;
+      }
+      #boot legend {
+        color: #8a8;
+        padding: 0 0.5em;
+      }
+      #boot label {
+        display: flex;
+        gap: 1em;
+        align-items: baseline;
+        margin: 0.35em 0;
+      }
+      #boot label > span:first-child {
+        flex: 0 0 11em;
+      }
+      #boot input[type="text"],
+      #boot input[type="number"] {
+        flex: 1;
+        min-width: 0;
+        background: #1c1c1c;
+        border: 1px solid #444;
+        padding: 0.2em 0.4em;
+      }
+      #boot input[type="number"] {
+        flex: 0 0 7em;
+      }
+      #boot button {
+        background: #1c1c1c;
+        border: 1px solid #555;
+        padding: 0.25em 0.9em;
+        cursor: pointer;
+      }
+      #boot button:hover {
+        border-color: #8ab4f8;
+      }
+      #boot button.primary {
+        background: #24452a;
+        border-color: #4a8a55;
+        padding: 0.5em 2em;
+      }
+      #boot .row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75em;
+        align-items: baseline;
+        margin: 0.35em 0;
+      }
+      #boot .hint {
+        color: #888;
+        margin: 0.35em 0;
+      }
+      #countdown {
+        color: #cc8;
       }
       #terminal {
         flex: 1;
@@ -78,12 +151,72 @@
       <h1>Linux on WebAssembly</h1>
       <span id="status">starting</span>
       <span class="links">
-        <button id="reset" title="Delete the stored changes to the file system and start again from the base">reset disk</button>
+        <button id="restart" hidden title="Stop the machine and go back to the boot menu">boot menu</button>
         <a id="build" href="https://github.com/linux-wasm/linux"></a>
         <a href="https://github.com/linux-wasm">source</a>
       </span>
     </header>
-    <div id="terminal" aria-label="Console"></div>
+    <main id="boot" hidden aria-label="Boot menu">
+      <form id="boot-form">
+        <div class="row">
+          <button class="primary" id="boot-button" type="submit">Boot</button>
+          <span id="countdown"></span>
+        </div>
+        <fieldset>
+          <legend>Machine</legend>
+          <label>
+            <span>Memory (MiB)</span>
+            <input name="memory" type="number" min="64" max="1024" step="32" />
+          </label>
+          <label>
+            <span>Kernel command line</span>
+            <input name="cmdline" type="text" placeholder="(the kernel's built-in one)" spellcheck="false" />
+          </label>
+          <label>
+            <span>Boot without asking</span>
+            <span><input name="autoboot" type="checkbox" /> after 3 seconds, unless a key is pressed</span>
+          </label>
+        </fieldset>
+        <fieldset>
+          <legend>Disk</legend>
+          <p class="hint">
+            What you add, change and delete is kept in a disk image in this
+            browser's storage for this site; the system itself is read-only
+            and comes with the page.
+          </p>
+          <div class="row"><span id="disk-status"></span></div>
+          <div class="row">
+            <button id="disk-delete" type="button">Delete</button>
+            <button id="disk-export" type="button">Save a copy…</button>
+            <button id="disk-import" type="button">Replace with a copy…</button>
+            <input id="disk-file" type="file" hidden />
+          </div>
+        </fieldset>
+        <fieldset>
+          <legend>Network</legend>
+          <p class="hint">
+            A page cannot open network connections itself. With a proxy
+            (linux-wasm/netproxy, or any Wisp server) the system reaches
+            the network through it; without one it has none. A page loaded
+            over https can only use a wss:// proxy, or one on this
+            computer (ws://127.0.0.1…).
+          </p>
+          <label>
+            <span>Network card</span>
+            <span><input name="network" type="checkbox" /> eth0, 10.0.2.15</span>
+          </label>
+          <label>
+            <span>Proxy</span>
+            <input name="proxy" type="text" placeholder="ws://127.0.0.1:8765/" spellcheck="false" />
+          </label>
+          <label>
+            <span>Name server</span>
+            <input name="dns" type="text" placeholder="1.1.1.1" spellcheck="false" />
+          </label>
+        </fieldset>
+      </form>
+    </main>
+    <div id="terminal" hidden aria-label="Console"></div>
     <pre id="notes" aria-label="Messages of the page itself"></pre>
     <script src="xterm.js"></script>
     <script src="addon-fit.js"></script>

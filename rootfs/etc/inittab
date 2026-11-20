@@ -10,6 +10,7 @@
 ::sysinit:/bin/mount -t tmpfs tmpfs /run
 ::sysinit:/bin/mount -t tmpfs -o mode=1777 tmpfs /tmp
 ::sysinit:/bin/hostname -F /etc/hostname
+::sysinit:/sbin/network-up
 ::sysinit:/bin/cat /etc/motd
 ::respawn:-/bin/bash
 ::ctrlaltdel:/sbin/reboot

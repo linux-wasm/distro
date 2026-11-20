@@ -1,0 +1,17 @@
+# Third boot of scripts/test.sh, with a network card whose proxy, HTTP
+# server and name server are scripts/net-test-servers.mjs.
+virtio-wasm: 3 host devices
+# the interface is configured (/sbin/network-up) and the gateway answers
+1
+1
+# TCP through the proxy to the HTTP server on the host
+host says /over-tcp
+# a name, resolved over UDP through the proxy
+host says /by-name
+# 300000 bytes arrive intact (cksum of "0123456789" x 30000)
+@CKSUM@ 300000
+# nothing listens on port 1
+closed port: 1
+# bash's own /dev/tcp
+host says /from-bash
+[host] machine halted: poweroff

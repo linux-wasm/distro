@@ -1,7 +1,7 @@
 #!/bin/sh
 # Fetch the pinned sources from sources.env into work/src/.
 #
-#   scripts/fetch.sh [kernel|musl|ports|xterm]
+#   scripts/fetch.sh [kernel|musl|ports|netproxy|xterm]
 #
 # Each is fetched as a single commit without history (the kernel is ~300 MB
 # that way instead of several GB). With KERNEL_DIR / MUSL_DIR set there is
@@ -38,6 +38,10 @@ fetch_ports() {
 	fetch_commit ports "$PORTS_PINNED" "$PORTS_DIR" "$PORTS_REPO" "$PORTS_COMMIT"
 }
 
+fetch_netproxy() {
+	fetch_commit netproxy "$NETPROXY_PINNED" "$NETPROXY_DIR" "$NETPROXY_REPO" "$NETPROXY_COMMIT"
+}
+
 # fetch_tarball <name> <url> <sha512, base64>: unpack an npm package into
 # work/src/<name>/ (its files are below package/).
 fetch_tarball() {
@@ -63,10 +67,11 @@ fetch_xterm() {
 }
 
 case "${1:-all}" in
-all) fetch_kernel; fetch_musl; fetch_ports; fetch_xterm ;;
+all) fetch_kernel; fetch_musl; fetch_ports; fetch_netproxy; fetch_xterm ;;
+netproxy) fetch_netproxy ;;
 ports) fetch_ports ;;
 xterm) fetch_xterm ;;
 kernel) fetch_kernel ;;
 musl) fetch_musl ;;
-*) echo "usage: $0 [kernel|musl|ports|xterm]" >&2; exit 1 ;;
+*) echo "usage: $0 [kernel|musl|ports|netproxy|xterm]" >&2; exit 1 ;;
 esac

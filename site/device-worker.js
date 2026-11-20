@@ -1,5 +1,6 @@
 // Browser glue: a Web Worker that runs one virtio device (device.js, from
-// the kernel tree). It opens what backs a disk:
+// the kernel tree). A network card needs nothing opened: its backend is
+// the options of the user-mode network. For a disk it opens what backs it:
 //
 //   { kind: "http", url }
 //       The image is downloaded once and kept in memory; read-only.
@@ -80,6 +81,8 @@ async function openOpfs({ name, bytes, initialUrl }) {
 }
 
 async function open(backend) {
+  // A network card: the options, plus where its reports go.
+  if (backend.kind === undefined) return { ...backend, onstatus: note };
   switch (backend.kind) {
     case "http": {
       const response = await fetch(backend.url);

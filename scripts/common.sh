@@ -2,8 +2,9 @@
 #
 #   WORK         everything fetched or built goes here (default ./work)
 #   KERNEL_DIR   use an existing kernel checkout instead of fetching the
-#   MUSL_DIR     pinned commit (same for musl and, with PORTS_DIR, the
-#   PORTS_DIR    package recipes). This is how the
+#   MUSL_DIR     pinned commit (same for musl, with PORTS_DIR the package
+#   PORTS_DIR    recipes and with NETPROXY_DIR the network proxy that
+#   NETPROXY_DIR the tests use). This is how the
 #                repositories are developed side by side:
 #                    KERNEL_DIR=~/src/linux scripts/build.sh kernel
 #   CONTAINER    docker (default) or podman
@@ -33,6 +34,14 @@ if [ -n "${PORTS_DIR:-}" ]; then
 	PORTS_DIR="$(cd "$PORTS_DIR" && pwd)"
 else
 	PORTS_DIR="$WORK/src/ports"
+fi
+
+NETPROXY_PINNED=1
+if [ -n "${NETPROXY_DIR:-}" ]; then
+	NETPROXY_PINNED=
+	NETPROXY_DIR="$(cd "$NETPROXY_DIR" && pwd)"
+else
+	NETPROXY_DIR="$WORK/src/netproxy"
 fi
 
 KERNEL_OUT="$WORK/build/kernel"
