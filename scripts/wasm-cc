@@ -16,7 +16,9 @@ so this wrapper
     makes fork() possible.
 
 The ABI is defined by the kernel: arch/wasm/kernel/binfmt_wasm.c.
-Environment: WASM_SYSROOT (default /work/sysroot).
+Environment: WASM_SYSROOT (default /work/sysroot); WASM_CC_NO_ASYNCIFY=1
+skips the Asyncify pass, for programs that are only linked to see whether
+they link (configure scripts): they cannot fork.
 """
 import os
 import subprocess
@@ -56,6 +58,10 @@ def main():
     args = sys.argv[1:]
     if any(a in ("-c", "-E", "-S", "-M", "-MM") for a in args):
         os.execv(f"{LLVM}/clang", ["clang"] + CFLAGS + args)
+    # Nothing to compile or link: a question for the compiler (--version,
+    # -dumpmachine, -print-file-name=...).
+    if not any(a.endswith((".o", ".a", ".c", ".S", ".s")) for a in args):
+        os.execv(f"{LLVM}/clang", ["clang"] + CFLAGS + args)
 
     # Relocatable link ("cc -nostdlib -r", used by kbuild-style Makefiles
     # for built-in.o): just combine the objects.
@@ -81,14 +87,17 @@ def main():
             inputs.append(a)
         elif a.endswith((".c", ".S", ".s")):
             sources.append(a)
+        elif a == "-L":
+            inputs += [a, next(it)]
         elif a.startswith("-L"):
             inputs.append(a)
         elif a.startswith("-l"):
             if a[2:] not in LIBC_LIBS:
                 inputs.append(a)
-        elif a.startswith("-Wl,") or a in ("-static", "-pie", "-shared", "-nostdlib", "-s"):
+        elif a.startswith("-Wl,") or a in ("-static", "-pie", "-shared", "-nostdlib", "-s",
+                                           "-rdynamic", "-pthread"):
             pass
-        elif a in ("-x", "-include", "-isystem", "-I", "-D", "-U"):
+        elif a in ("-x", "-include", "-isystem", "-I", "-D", "-U", "-MF", "-MT", "-MQ"):
             cflags += [a, next(it)]
         else:
             cflags.append(a)
@@ -102,7 +111,8 @@ def main():
             f"{SYSROOT}/lib/libc.a", BUILTINS, "-o", output]
         subprocess.run(cmd, check=True)
         # fork(): let the program save and restore its call stack.
-        subprocess.run(["wasm-opt"] + ASYNCIFY + [output, "-o", output], check=True)
+        if not os.environ.get("WASM_CC_NO_ASYNCIFY"):
+            subprocess.run(["wasm-opt"] + ASYNCIFY + [output, "-o", output], check=True)
 
 
 if __name__ == "__main__":

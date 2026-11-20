@@ -19,8 +19,9 @@ run_case() {
 	name="$1"
 	shift
 	# Build node-run.mjs's --input/--input-after pairs from the input
-	# file: each line is typed followed by a newline (node-run.mjs turns
-	# the two characters \n into one, and \xHH into that byte);
+	# file: each line is typed followed by Enter, which is a carriage
+	# return as on a real terminal (node-run.mjs turns \xHH into that
+	# byte);
 	# "@wait TEXT" holds back what follows until TEXT has been printed.
 	chunk=
 	after='# '
@@ -32,7 +33,7 @@ run_case() {
 			after="${line#@wait }"
 			;;
 		*)
-			chunk="$chunk$line\\n"
+			chunk="$chunk$line\\x0d"
 			;;
 		esac
 	done < "$DISTRO/tests/$name-input.txt"
@@ -41,7 +42,7 @@ run_case() {
 	status=0
 	node "$KERNEL_TOOLS/host/node-run.mjs" --kernel "$KERNEL_OUT/vmlinux.wasm" \
 		--disk "$WORK/base.erofs" --disk "$data" \
-		--timeout "${BOOT_TIMEOUT:-30}" "$@" > "$log" 2>&1 || status=$?
+		--timeout "${BOOT_TIMEOUT:-60}" "$@" > "$log" 2>&1 || status=$?
 
 	fail=0
 	line=0

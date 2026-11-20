@@ -6,7 +6,8 @@
 #   scripts/build.sh musl       # libc -> work/sysroot/
 #   scripts/build.sh headers    # kernel headers for user space
 #   scripts/build.sh user       # this repository's programs (user/)
-#   scripts/build.sh busybox    # shell, init and the usual commands
+#   scripts/build.sh busybox    # init and the small versions of the usual commands
+#   scripts/build.sh ports      # packages: bash, coreutils, ncurses (linux-wasm/ports)
 #   scripts/build.sh rootfs     # the root file system -> work/base.erofs, work/data.img
 #   scripts/build.sh kernel     # the kernel
 #   scripts/build.sh site       # the web page -> work/site/
@@ -38,10 +39,12 @@ build_musl() {
 	echo "musl: $SYSROOT"
 }
 
-# Kernel headers (linux/*.h) for programs that include them: BusyBox.
+# Kernel headers (linux/*.h) for programs that include them, installed
+# next to libc's in the sysroot.
 build_headers() {
 	"$KERNEL_TOOLS/scripts/kmake.sh" tinyconfig
 	"$KERNEL_TOOLS/scripts/kmake.sh" headers_install INSTALL_HDR_PATH=/out/headers
+	cp -R "$KERNEL_OUT/headers/include/." "$SYSROOT/include/"
 }
 
 # Programs from user/: one .c file each, linked against musl.
@@ -95,6 +98,14 @@ build_busybox() {
 	echo "busybox: $src/busybox"
 }
 
+# Packages from linux-wasm/ports, built with this repository's compiler
+# driver against the sysroot -> work/ports/out/*.tar.gz.
+build_ports() {
+	"$DISTRO/scripts/fetch.sh" ports
+	TOOLCHAIN="$DISTRO/scripts" SYSROOT="$SYSROOT" WORK="$WORK/ports" \
+		CONTAINER="$CONTAINER" IMAGE="$IMAGE" "$PORTS_DIR/build.sh"
+}
+
 # The root file system has two layers, joined by overlayfs at boot
 # (rootfs/sbin/overlay-init):
 #
@@ -125,6 +136,13 @@ build_rootfs() {
 		while read -r link; do
 			ln -s /bin/busybox ".$link"
 		done < "$WORK/src/busybox/busybox.links"
+		# The packages, in /usr; PATH has /usr/bin first, so their
+		# programs are found before the BusyBox applets of the same
+		# name.
+		for package in "$WORK"/ports/out/*.tar.gz; do
+			tar -xzf "$package"
+		done
+		ln -s /usr/bin/bash bin/bash
 	)
 	rm -f "$WORK/base.erofs" "$WORK/data.img"
 	container_run sh -ec "
@@ -185,10 +203,11 @@ all)
 	build_headers
 	build_user
 	build_busybox
+	build_ports
 	build_rootfs
 	build_kernel
 	build_site
 	;;
-toolchain|musl|headers|user|busybox|rootfs|kernel|site) "build_$1" ;;
-*) echo "usage: $0 [all|toolchain|musl|headers|user|busybox|rootfs|kernel|site]" >&2; exit 1 ;;
+toolchain|musl|headers|user|busybox|ports|rootfs|kernel|site) "build_$1" ;;
+*) echo "usage: $0 [all|toolchain|musl|headers|user|busybox|ports|rootfs|kernel|site]" >&2; exit 1 ;;
 esac

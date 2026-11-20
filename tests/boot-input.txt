@@ -1,4 +1,9 @@
 uname -sm
+echo "bash ${BASH_VERSION%%.*}"; ls --version | head -n 1; TERM=xterm tput cup 3 4 | od -c | head -n 1
+for p in grep sed gawk find diff tar gzip make less nano; do $p --version 2>&1 | head -n 1; done
+cd /tmp; mkdir -p d/e; echo x > d/e/f; tar czf t.tgz d; tar tzf t.tgz | wc -l; find d -type f | xargs cat | sed s/x/yz/ | sed s/y/ok-/
+echo 20 22 | gawk '{print "awk-" $1+$2}'; echo 'all: ; @echo made-$(words a b c)' > Makefile; make; echo x > g; diff -q d/e/f g && echo same""-files; cd
+declare -A m; m[k]=v; echo "assoc ${m[k]}"; cat <(echo proc""sub)
 echo busybox says hello
 ls /etc
 cat /etc/motd | grep -c WebAssembly
@@ -27,4 +32,13 @@ echo kept > /root/note; rm /etc/motd; echo changed > /etc/hostname
 ls /etc; cat /overlay/base/etc/hostname
 echo '#!/bin/sh' > /tmp/s; echo 'echo script-$1$1' >> /tmp/s; chmod +x /tmp/s; /tmp/s 7
 ls -1 /dev/pts/ptmx /dev/vda /dev/vdb
+nano /tmp/n.txt
+@wait Go To Line
+def
+@wait Modified
+\x0f
+@wait Wrote
+\x18
+@wait ~#
+tr d-f u-w < /tmp/n.txt
 poweroff

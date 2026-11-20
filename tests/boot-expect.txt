@@ -12,9 +12,33 @@ Run /sbin/overlay-init as init process
 overlay-init: changes are kept on /dev/vdb
 init started: BusyBox
 Changes to the file system are kept
-built-in shell (ash)
 # uname -sm
 Linux wasm
+# the packages from linux-wasm/ports: bash is the login shell, ls is GNU
+# coreutils, and tput (ncurses) finds the terminal description
+bash 5
+ls (GNU coreutils)
+033   [   4   ;   5   H
+# the other packages
+(GNU grep)
+(GNU sed)
+GNU Awk
+(GNU findutils)
+(GNU diffutils)
+(GNU tar)
+gzip 1.
+GNU Make
+less 6
+GNU nano
+# tar, find, xargs, sed; gawk, make, diff
+3
+ok-z
+awk-42
+made-3
+same-files
+# bash features: an associative array, process substitution
+assoc v
+procsub
 # echo
 busybox says hello
 # ls /etc
@@ -30,7 +54,7 @@ loop 3
 proc-mounted
 # exit status of a failing command
 No such file or directory
-status 1
+status 2
 # /bin/selftest (user/selftest.c): setjmp, files, pipes, malloc, time,
 # threads, vfork, signals
 selftest: all passed
@@ -43,7 +67,7 @@ status 130
 stop me
 Stopped
 fg status 0
-# fork(): the shell is ash, which forks for all of these. A subshell
+# fork(): the shell forks for all of these. A subshell
 # with its own variables,
 in sub
 out unset
@@ -68,6 +92,10 @@ script-77
 /dev/pts/ptmx
 /dev/vda
 /dev/vdb
+# nano, a curses program: type a line, write the file (Ctrl-O, Enter),
+# leave (Ctrl-X). What nano draws is one long line to this test, so only
+# the file is checked.
+uvw
 # poweroff through BusyBox init
 Requesting system poweroff
 reboot: Power down

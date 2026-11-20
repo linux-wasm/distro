@@ -2,7 +2,8 @@
 #
 #   WORK         everything fetched or built goes here (default ./work)
 #   KERNEL_DIR   use an existing kernel checkout instead of fetching the
-#   MUSL_DIR     pinned commit (same for musl). This is how the
+#   MUSL_DIR     pinned commit (same for musl and, with PORTS_DIR, the
+#   PORTS_DIR    package recipes). This is how the
 #                repositories are developed side by side:
 #                    KERNEL_DIR=~/src/linux scripts/build.sh kernel
 #   CONTAINER    docker (default) or podman
@@ -24,6 +25,14 @@ if [ -n "${MUSL_DIR:-}" ]; then
 	MUSL_DIR="$(cd "$MUSL_DIR" && pwd)"
 else
 	MUSL_DIR="$WORK/src/musl"
+fi
+
+PORTS_PINNED=1
+if [ -n "${PORTS_DIR:-}" ]; then
+	PORTS_PINNED=
+	PORTS_DIR="$(cd "$PORTS_DIR" && pwd)"
+else
+	PORTS_DIR="$WORK/src/ports"
 fi
 
 KERNEL_OUT="$WORK/build/kernel"
