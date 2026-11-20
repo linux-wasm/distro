@@ -9,7 +9,7 @@ browser tab; rebuilt from `main` on every push).
 
 **Status: boots to a BusyBox shell on a layered, persistent root file
 system, in a real terminal.** `scripts/build.sh` builds musl, BusyBox
-(unpatched 1.38.0, NOMMU configuration with the hush shell) and a test
+(unpatched 1.38.0, with the ash shell) and a test
 program, packs them into a read-only base image, builds the kernel and
 assembles the web page. At boot the base (`/dev/vda`, erofs, loaded over
 HTTP and kept in memory) gets a writable layer on top (`/dev/vdb`, ext4,
@@ -24,7 +24,10 @@ not replace it ("reset disk" on the page deletes it). The tab can be
 closed at any time: changes reach the disk within about a second, and
 ext4's journal copes with the cut.
 
-Not there: `fork()`, memory protection between programs, dynamic linking,
+`fork()` works: ash runs subshells, pipelines and command substitution in
+forked copies of itself, like on any Linux.
+
+Not there: memory protection between programs, dynamic linking,
 networking, and anything beyond that applet list. A program that computes
 without making system calls cannot be interrupted, and freezes the machine
 while it runs. See the roadmap for what stands between this and a
@@ -34,7 +37,7 @@ distribution with systemd.
 
 | Repository | Role | State |
 |---|---|---|
-| [linux-wasm/linux](https://github.com/linux-wasm/linux) | Kernel with `arch/wasm` | runs user programs: syscalls, clone, vfork, execve, signals, console input |
+| [linux-wasm/linux](https://github.com/linux-wasm/linux) | Kernel with `arch/wasm` | runs user programs: syscalls, clone, fork, vfork, execve, signals, virtio disks |
 | [linux-wasm/musl](https://github.com/linux-wasm/musl) | C library | enough for BusyBox and `/bin/selftest`; no libc test suite run |
 | linux-wasm/distro (this) | Puts it together | builds, boot-tests and publishes kernel + musl + BusyBox |
 
@@ -133,7 +136,7 @@ distro needs to change).
 2. musl. Done: enough for BusyBox; `/bin/selftest` covers setjmp, files,
    pipes, malloc, time, threads, vfork and signals. Open: no libc test
    suite run.
-3. BusyBox. Done: init, hush with job control and a basic applet set,
+3. BusyBox. Done: init, ash with job control and the usual applets,
    unpatched.
 4. Kernel: signal handlers. Done: Ctrl-C and job control work. Open: a
    program that makes no system calls cannot be signalled.
@@ -145,12 +148,12 @@ distro needs to change).
 7. A process model that ordinary software can live with. This is the
    step everything below depends on, and it is a change of the kernel's
    design, not of its configuration:
-   - `fork()`. Programs share one address space and a wasm call stack
-     cannot be copied, so there is none; bash, dpkg, perl, systemd and
-     most of a distribution call it. It needs a memory of its own per
-     process (the kernel then reaches user memory through the host
-     instead of by pointer) and a way to duplicate a running program
-     (compiler instrumentation in the style of Asyncify).
+   - `fork()`. Done: programs are instrumented with Binaryen's Asyncify
+     (`scripts/wasm-cc`) so that they can save and rebuild their call
+     stack, and the kernel keeps a copy of the memory per process, which
+     it exchanges when switching between related processes. Open: that
+     exchange costs a copy of the shared memory per switch; a memory of
+     its own per process would remove it and give protection.
    - Interrupting a program that computes (signals, time slices):
      compiler-inserted polling in user programs.
    - Shared libraries and `dlopen`, `mmap` of files.
