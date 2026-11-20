@@ -1,16 +1,18 @@
 # linux-wasm distro
 
 Builds a bootable Linux-on-WebAssembly system out of its parts and is the
-place for everything that is neither kernel nor libc: build orchestration,
-BusyBox patches, the initramfs, and later the web front end.
+place for everything that is neither kernel, libc nor a package: build
+orchestration, the compiler driver, the root file system's own files and
+the web front end.
 
 **Live: https://linux-wasm.github.io/distro/** (the kernel booting in your
 browser tab; rebuilt from `main` on every push).
 
 **Status: boots to bash on a layered, persistent root file system, in a
 real terminal, with GNU userland.** `scripts/build.sh` builds musl,
-BusyBox (unpatched 1.38.0: init and the small tools), the packages of
-[linux-wasm/ports](https://github.com/linux-wasm/ports) (bash, coreutils,
+the packages of
+[linux-wasm/ports](https://github.com/linux-wasm/ports) (BusyBox for init
+and the small tools, bash, coreutils,
 ncurses, grep, sed, gawk, findutils, diffutils, tar, gzip, make, less,
 nano) and a test program, packs them into a read-only base image, builds
 the kernel and assembles the web page. At boot the base (`/dev/vda`,
@@ -40,39 +42,34 @@ distribution with systemd.
 |---|---|---|
 | [linux-wasm/linux](https://github.com/linux-wasm/linux) | Kernel with `arch/wasm` | runs user programs: syscalls, clone, fork, vfork, execve, signals, virtio disks |
 | [linux-wasm/musl](https://github.com/linux-wasm/musl) | C library | enough for BusyBox and `/bin/selftest`; no libc test suite run |
-| [linux-wasm/ports](https://github.com/linux-wasm/ports) | Packages | 13 upstream packages, unpatched; exercised by this repository's boot test |
-| linux-wasm/distro (this) | Puts it together | builds, boot-tests and publishes kernel + musl + BusyBox |
-
-BusyBox is the upstream release; it has needed no patches so far
-(`patches/busybox/` is where they would go).
+| [linux-wasm/ports](https://github.com/linux-wasm/ports) | Packages | 14 upstream packages, unpatched; exercised by this repository's boot test |
+| linux-wasm/distro (this) | Puts it together | builds, boot-tests and publishes kernel + musl + packages |
 
 ## Usage
 
 Requirements: git, docker (or podman), node >= 20.
 
 ```sh
-scripts/build.sh      # toolchain image, musl, headers, user programs, BusyBox, packages, root file system, kernel, site
+scripts/build.sh      # toolchain image, musl, headers, user programs, packages, root file system, kernel, site
 scripts/test.sh       # headless boot tests: shell commands, Ctrl-C/Ctrl-Z, and a second boot that finds the first one's changes
 scripts/serve.mjs     # http://127.0.0.1:8080/
 ```
 
 `scripts/build.sh <step>` runs one step (`toolchain`, `musl`, `headers`,
-`user`, `busybox`, `ports`, `rootfs`, `kernel`, `site`). Everything fetched or
+`user`, `ports`, `rootfs`, `kernel`, `site`). Everything fetched or
 built goes to `work/` (ignored by git).
 
 ## Layout
 
 | Path | Contents |
 |---|---|
-| `sources.env` | Pinned kernel, musl and ports commits, BusyBox release, xterm.js packages |
+| `sources.env` | Pinned kernel, musl and ports commits, xterm.js packages |
 | `scripts/` | `fetch.sh`, `build.sh`, `test.sh`, `serve.mjs`, and `wasm-cc`, the compiler driver for user programs |
-| `busybox/config` | BusyBox options enabled on top of allnoconfig |
 | `kernel.config` | Kernel options enabled on top of the kernel's tinyconfig |
 | `rootfs/` | Files copied into the base image as they are: `/etc`, and `/sbin/overlay-init`, which stacks the layers before init starts |
 | `user/` | The distro's own programs: `selftest.c` (`/bin/selftest`) |
 | `tests/` | What the tests type (`*-input.txt`) and expect (`*-expect.txt`): `boot`, then `persist` on the same disk |
 | `site/` | The web page: terminal, disks (`device-worker.js`), worker glue and the service worker |
-| `patches/` | Patches for upstream projects that have no fork here |
 
 ## Building your own programs
 
@@ -114,8 +111,8 @@ The CI workflow deploys `work/site/` to GitHub Pages from `main`.
 
 ## Pinned versions
 
-`sources.env` names the exact kernel commit, musl commit and BusyBox
-release. Bumping one is its own commit, e.g.
+`sources.env` names the exact kernel, musl and ports commits (the
+versions of the packages are in the ports recipes). Bumping one is its own commit, e.g.
 `build(sources): bump kernel to <short sha>`.
 
 ## Working on the kernel, musl and the distro together
@@ -139,7 +136,7 @@ distro needs to change).
    pipes, malloc, time, threads, vfork and signals. Open: no libc test
    suite run.
 3. BusyBox. Done: init, ash with job control and the usual applets,
-   unpatched.
+   unpatched; now one of the packages in linux-wasm/ports.
 4. Kernel: signal handlers. Done: Ctrl-C and job control work. Open: a
    program that makes no system calls cannot be signalled.
 5. A real terminal on the page. Done: xterm.js, window size.
@@ -159,7 +156,7 @@ distro needs to change).
    - Interrupting a program that computes (signals, time slices):
      compiler-inserted polling in user programs.
    - Shared libraries and `dlopen`, `mmap` of files.
-8. Packages. Done: linux-wasm/ports with 13 packages, bash as the
+8. Packages. Done: linux-wasm/ports with 14 packages, bash as the
    shell. Open: more of what a distribution consists of (util-linux,
    procps, a compiler would need far more), a package manager with a
    repository served over HTTP instead of everything in the base image,
@@ -183,6 +180,5 @@ distro needs to change).
 
 The files in this repository (scripts, the web page, CI) are MIT licensed,
 see [LICENSE](LICENSE). That does not extend to what they build: the kernel
-and BusyBox are GPL-2.0, musl is MIT, and a patch in `patches/` carries the
-license of the project it applies to. A built image is therefore subject to
-the GPL.
+and most packages are GPL, musl is MIT. A built image is therefore subject
+to the GPL.

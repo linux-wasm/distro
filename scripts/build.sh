@@ -6,8 +6,7 @@
 #   scripts/build.sh musl       # libc -> work/sysroot/
 #   scripts/build.sh headers    # kernel headers for user space
 #   scripts/build.sh user       # this repository's programs (user/)
-#   scripts/build.sh busybox    # init and the small versions of the usual commands
-#   scripts/build.sh ports      # packages: bash, coreutils, ncurses (linux-wasm/ports)
+#   scripts/build.sh ports      # packages: busybox, bash, coreutils, ... (linux-wasm/ports)
 #   scripts/build.sh rootfs     # the root file system -> work/base.erofs, work/data.img
 #   scripts/build.sh kernel     # the kernel
 #   scripts/build.sh site       # the web page -> work/site/
@@ -59,45 +58,6 @@ build_user() {
 	echo "user: $USER_OUT"
 }
 
-# BusyBox: upstream release, configured from busybox/config, built with
-# scripts/wasm-cc as its compiler. busybox.links lists the applet paths.
-build_busybox() {
-	src="$WORK/src/busybox"
-	if [ ! -d "$src" ]; then
-		git clone -q --depth 1 -b "$BUSYBOX_TAG" "$BUSYBOX_REPO" "$src"
-		for patch in "$DISTRO"/patches/busybox/*.patch; do
-			[ -f "$patch" ] && git -C "$src" apply "$patch"
-		done
-	fi
-	"$CONTAINER" run --rm --security-opt label=disable \
-		--user "$(id -u):$(id -g)" -e HOME=/tmp \
-		-v "$DISTRO:/distro" -v "$WORK:/work" \
-		-v "$KERNEL_OUT/headers:/kernel-headers" \
-		-w /work/src/busybox "$IMAGE" sh -ec '
-		export PATH=/distro/scripts:$PATH
-		M="make CC=wasm-cc HOSTCC=gcc AR=/usr/lib/llvm-19/bin/llvm-ar \
-			NM=/usr/lib/llvm-19/bin/llvm-nm STRIP=true SKIP_STRIP=y"
-		$M allnoconfig >/dev/null
-		grep -v "^#" /distro/busybox/config | while read -r opt; do
-			[ -n "$opt" ] || continue
-			grep -q "^# CONFIG_$opt is not set" .config ||
-				{ echo "busybox/config: unknown option $opt" >&2; exit 1; }
-			sed -i "s/^# CONFIG_$opt is not set/CONFIG_$opt=y/" .config
-		done
-		# /bin/sh is ash (a choice, which allnoconfig leaves at "none").
-		sed -i "s/^CONFIG_SH_IS_NONE=y/CONFIG_SH_IS_ASH=y/" .config
-		# Where BusyBox finds itself to run an applet as a new process;
-		# the default, /proc/self/exe, needs /proc to be mounted.
-		sed -i "s|^CONFIG_BUSYBOX_EXEC_PATH=.*|CONFIG_BUSYBOX_EXEC_PATH=\"/bin/busybox\"|" .config
-		sed -i "s|^CONFIG_EXTRA_CFLAGS=.*|CONFIG_EXTRA_CFLAGS=\"-isystem /kernel-headers/include\"|" .config
-		yes "" | $M oldconfig >/dev/null
-		$M -s -j"$(nproc)" busybox busybox.links 2>&1 |
-			grep -v "is not supported \[-Wignored-optimization-argument\]" || true
-		test -f busybox
-	'
-	echo "busybox: $src/busybox"
-}
-
 # Packages from linux-wasm/ports, built with this repository's compiler
 # driver against the sysroot -> work/ports/out/*.tar.gz.
 build_ports() {
@@ -127,19 +87,17 @@ build_rootfs() {
 		chmod 1777 tmp
 		chmod 700 root
 		cp -R "$DISTRO"/rootfs/. .
-		cp "$WORK/src/busybox/busybox" bin/busybox
 		for src in "$USER_OUT"/*.wasm; do
 			cp "$src" "bin/$(basename "$src" .wasm)"
 		done
 		chmod 755 bin/* sbin/*
-		# One symlink per applet, as "busybox --install -s" would make.
-		while read -r link; do
-			ln -s /bin/busybox ".$link"
-		done < "$WORK/src/busybox/busybox.links"
-		# The packages, in /usr; PATH has /usr/bin first, so their
-		# programs are found before the BusyBox applets of the same
-		# name.
+		# The packages. BusyBox first: it has an applet for many of
+		# the programs that other packages bring, and where both
+		# install to the same path the real program replaces the
+		# applet. (Elsewhere PATH decides, with /usr/bin first.)
+		tar -xzf "$WORK"/ports/out/busybox-*.tar.gz
 		for package in "$WORK"/ports/out/*.tar.gz; do
+			case "$package" in */busybox-*) continue ;; esac
 			tar -xzf "$package"
 		done
 		ln -s /usr/bin/bash bin/bash
@@ -202,12 +160,11 @@ all)
 	build_musl
 	build_headers
 	build_user
-	build_busybox
 	build_ports
 	build_rootfs
 	build_kernel
 	build_site
 	;;
-toolchain|musl|headers|user|busybox|ports|rootfs|kernel|site) "build_$1" ;;
-*) echo "usage: $0 [all|toolchain|musl|headers|user|busybox|ports|rootfs|kernel|site]" >&2; exit 1 ;;
+toolchain|musl|headers|user|ports|rootfs|kernel|site) "build_$1" ;;
+*) echo "usage: $0 [all|toolchain|musl|headers|user|ports|rootfs|kernel|site]" >&2; exit 1 ;;
 esac
