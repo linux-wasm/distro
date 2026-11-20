@@ -19,8 +19,13 @@ the kernel and assembles the web page. At boot the base (`/dev/vda`,
 erofs, loaded over HTTP and kept in memory) gets a writable layer on top
 (`/dev/vdb`, ext4, stored by the browser in the origin private file
 system) with overlayfs; BusyBox `init` then runs `/etc/inittab` and
-starts bash as a login shell. The page shows the console in xterm.js and
-tells the kernel its size.
+starts bash as a login shell. The page starts with a boot menu (memory,
+kernel command line, the stored disk, the network), then shows the
+console in xterm.js and tells the kernel its size.
+
+With a proxy ([linux-wasm/netproxy](https://github.com/linux-wasm/netproxy))
+the system has a network: the kernel's own TCP/IP on a virtio network
+card, whose connections the page hands to the proxy over a WebSocket.
 
 What you add, change or delete is kept between visits; a newer base does
 not replace it ("reset disk" on the page deletes it). The tab can be
@@ -31,7 +36,8 @@ ext4's journal copes with the cut.
 substitution in forked copies of itself, like on any Linux.
 
 Not there: memory protection between programs, dynamic linking (every
-program is linked statically), networking, a package manager. A program that computes
+program is linked statically), a package manager, connections into the
+system from outside. A program that computes
 without making system calls cannot be interrupted, and freezes the machine
 while it runs. See the roadmap for what stands between this and a
 distribution with systemd.
@@ -43,6 +49,7 @@ distribution with systemd.
 | [linux-wasm/linux](https://github.com/linux-wasm/linux) | Kernel with `arch/wasm` | runs user programs: syscalls, clone, fork, vfork, execve, signals, virtio disks |
 | [linux-wasm/musl](https://github.com/linux-wasm/musl) | C library | enough for BusyBox and `/bin/selftest`; no libc test suite run |
 | [linux-wasm/ports](https://github.com/linux-wasm/ports) | Packages | 14 upstream packages, unpatched; exercised by this repository's boot test |
+| [linux-wasm/netproxy](https://github.com/linux-wasm/netproxy) | WebSocket to TCP/UDP proxy | Wisp v1 server; used by the network test |
 | linux-wasm/distro (this) | Puts it together | builds, boot-tests and publishes kernel + musl + packages |
 
 ## Usage
@@ -51,7 +58,7 @@ Requirements: git, docker (or podman), node >= 20.
 
 ```sh
 scripts/build.sh      # toolchain image, musl, headers, user programs, packages, root file system, kernel, site
-scripts/test.sh       # headless boot tests: shell commands, Ctrl-C/Ctrl-Z, and a second boot that finds the first one's changes
+scripts/test.sh       # headless boot tests: the shell and every package, a second boot that finds the first one's changes, a third with a network
 scripts/serve.mjs     # http://127.0.0.1:8080/
 ```
 
@@ -68,8 +75,8 @@ built goes to `work/` (ignored by git).
 | `kernel.config` | Kernel options enabled on top of the kernel's tinyconfig |
 | `rootfs/` | Files copied into the base image as they are: `/etc`, and `/sbin/overlay-init`, which stacks the layers before init starts |
 | `user/` | The distro's own programs: `selftest.c` (`/bin/selftest`) |
-| `tests/` | What the tests type (`*-input.txt`) and expect (`*-expect.txt`): `boot`, then `persist` on the same disk |
-| `site/` | The web page: terminal, disks (`device-worker.js`), worker glue and the service worker |
+| `tests/` | What the tests type (`*-input.txt`) and expect (`*-expect.txt`): `boot`, then `persist` on the same disk, then `net` |
+| `site/` | The web page: boot menu, terminal, disks and network card (`device-worker.js`), worker glue and the service worker |
 
 ## Building your own programs
 
@@ -85,6 +92,32 @@ installed in `/bin` of the base image.
 kernel's host scripts (`tools/wasm/host/` in the kernel tree: the part
 shared with node), xterm.js, `vmlinux.wasm`, `base.erofs` and the empty
 `data.img.gz` into `work/site/`, a plain static site.
+
+The page opens on a boot menu. Its settings are kept in the browser
+(localStorage) and can be given in the URL, which is how to link to a
+configuration: `?mem=256&cmdline=...&proxy=ws://127.0.0.1:8765/&dns=1.1.1.1&autoboot=1`.
+With "boot without asking" the menu waits three seconds for a key and
+then boots. The disk with the user's changes can be deleted, saved as a
+file and replaced from one there. "boot menu" in the header of the
+running system stops the machine and returns to it.
+
+## Networking
+
+```sh
+git clone https://github.com/linux-wasm/netproxy && cd netproxy && npm ci
+node server.mjs --allow-origin http://127.0.0.1:8080    # ws://127.0.0.1:8765/
+```
+
+On the boot menu tick "Network card" and enter the proxy's URL. In the
+system the interface is `eth0` (10.0.2.15, set up by `/sbin/network-up`),
+the gateway 10.0.2.2 and the name server 10.0.2.3, whose queries go to
+the server named on the menu (default 1.1.1.1). `wget`, `nc`, `ping`
+(the gateway only), `nslookup`, `telnet` and bash's `/dev/tcp` are there;
+BusyBox `wget` speaks https without verifying certificates. A page served
+over https (the public one) can only use a `wss://` proxy or one on
+`127.0.0.1`. How it works and what it cannot do is in the kernel's
+`tools/wasm/NOTES.md`; what running a proxy exposes is in netproxy's
+README.
 
 ## The root file system
 
@@ -130,45 +163,26 @@ distro needs to change).
 
 ## Roadmap
 
-1. Kernel: user mode. Done: system calls, wasm binfmt, clone, vfork,
-   execve, signal handlers, console input and output.
-2. musl. Done: enough for BusyBox; `/bin/selftest` covers setjmp, files,
-   pipes, malloc, time, threads, vfork and signals. Open: no libc test
-   suite run.
-3. BusyBox. Done: init, ash with job control and the usual applets,
-   unpatched; now one of the packages in linux-wasm/ports.
-4. Kernel: signal handlers. Done: Ctrl-C and job control work. Open: a
-   program that makes no system calls cannot be signalled.
-5. A real terminal on the page. Done: xterm.js, window size.
-6. Storage. Done: virtio disks, a read-only base with a persistent layer
-   for changes. Open: the base is downloaded whole; fetching it block by
-   block on demand (HTTP ranges, cached) is what a large distribution
-   needs.
-7. A process model that ordinary software can live with. This is the
-   step everything below depends on, and it is a change of the kernel's
-   design, not of its configuration:
-   - `fork()`. Done: programs are instrumented with Binaryen's Asyncify
-     (`scripts/wasm-cc`) so that they can save and rebuild their call
-     stack, and the kernel keeps a copy of the memory per process, which
-     it exchanges when switching between related processes. Open: that
-     exchange costs a copy of the shared memory per switch; a memory of
-     its own per process would remove it and give protection.
-   - Interrupting a program that computes (signals, time slices):
-     compiler-inserted polling in user programs.
-   - Shared libraries and `dlopen`, `mmap` of files.
-8. Packages. Done: linux-wasm/ports with 14 packages, bash as the
-   shell. Open: more of what a distribution consists of (util-linux,
-   procps, a compiler would need far more), a package manager with a
-   repository served over HTTP instead of everything in the base image,
-   running the packages' test suites, and a cache of compiled programs in
-   the host (every `exec` compiles the program again; about 20 ms for
-   coreutils).
-9. systemd. Besides 7 it needs cgroups, unix sockets, netlink and more
-   of the kernel configuration; the event interfaces (epoll, signalfd,
-   timerfd, inotify) are enabled already. systemd supports musl since
-   v259.
-10. Networking (a virtio network device tunnelled over WebSocket or
-    WebTransport).
+Done so far: a kernel that runs user programs with fork, exec, threads,
+signals and job control; musl; virtio disks with a read-only base and a
+persistent layer for changes; a real terminal on the page; 14 packages
+from linux-wasm/ports with bash as the shell.
+
+What comes next, in order and with what each step is for, is in
+[ROADMAP.md](ROADMAP.md). Its goal is an Xfce desktop on X11 in the
+browser tab:
+
+1. A kernel and libc that can be trusted (test suites), and time slices
+   for programs that compute.
+2. Shared libraries and `dlopen`, C++, meson and cmake in ports.
+3. A package manager, and a base image fetched on demand.
+4. Unix sockets, shared memory, a framebuffer on a canvas, keyboard and
+   mouse.
+5. An X server, the X libraries, xterm and twm.
+
+Networking, which that plan had as optional, is done (see above).
+6. GTK 3 and what it stands on.
+7. D-Bus and Xfce.
 
 ## Conventions
 
