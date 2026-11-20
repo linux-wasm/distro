@@ -4,4 +4,10 @@ wget -qO- http://some.name.test:@HTTP@/by-name
 wget -qO- http://gateway:@HTTP@/large | cksum
 wget -qO- http://10.0.2.2:1/ ; echo "closed port: $?"
 exec 3<>/dev/tcp/10.0.2.2/@HTTP@; printf 'GET /from-bash HTTP/1.0\r\n\r\n' >&3; tail -n 1 <&3; exec 3<&-
+curl -sS http://some.name.test:@HTTP@/curl; curl -sS http://gateway:@HTTP@/large | cksum
+curl -sS https://10.0.2.2:@HTTPS@/untrusted; echo "untrusted certificate: $?"
+curl -sSk https://10.0.2.2:@HTTPS@/tls
+openssl version | cut -d' ' -f1; drill some.name.test @10.0.2.3 | grep -c '10\.0\.2\.2'
+ssh -V 2>&1 | cut -d_ -f1; ssh-keygen -q -t ed25519 -N '' -f /tmp/key && ssh-keygen -l -f /tmp/key.pub | cut -d' ' -f4
+mkdir -p /tmp/a/b; echo rsync""ed > /tmp/a/b/c; rsync -a /tmp/a/ /tmp/r/ && cat /tmp/r/b/c
 poweroff

@@ -3,15 +3,22 @@
 // on ports the system picks:
 //
 //   - the proxy from linux-wasm/netproxy, allowing private addresses
-//   - an HTTP server with a small and a large document
+//   - an HTTP server with a small and a large document, and the same
+//     over HTTPS with a certificate nobody has reason to trust (made
+//     with the openssl program)
 //   - a name server that answers every A question with 10.0.2.2, the
 //     address under which the system reaches this machine
 //
 //   net-test-servers.mjs <netproxy directory>
 //
-// Prints "PROXY=<port> HTTP=<port> DNS=<port>" and stays until killed.
+// Prints "PROXY=<port> HTTP=<port> HTTPS=<port> DNS=<port>" and stays
+// until killed.
+import { execFileSync } from "node:child_process";
 import dgram from "node:dgram";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { createServer } from "node:http";
+import { createServer as createTlsServer } from "node:https";
+import { tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
 
 const { startProxy } = await import(pathToFileURL(`${process.argv[2]}/server.mjs`));
@@ -21,10 +28,24 @@ const proxy = startProxy({ port: 0, allowPrivate: true });
 
 // 300000 bytes that the test can check: "0123456789" repeated.
 const large = "0123456789".repeat(30000);
-const http = createServer((request, response) => {
+const answer = (request, response) => {
   response.writeHead(200, { "Content-Type": "text/plain" });
   response.end(request.url === "/large" ? large : `host says ${request.url}\n`);
-}).listen(0, "127.0.0.1");
+};
+const http = createServer(answer).listen(0, "127.0.0.1");
+
+const dir = mkdtempSync(`${tmpdir()}/net-test-`);
+execFileSync("openssl", [
+  "req", "-x509", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:prime256v1",
+  "-nodes", "-days", "2", "-subj", "/CN=10.0.2.2",
+  "-addext", "subjectAltName=IP:10.0.2.2",
+  "-keyout", `${dir}/key.pem`, "-out", `${dir}/cert.pem`,
+], { stdio: "ignore" });
+const https = createTlsServer(
+  { key: readFileSync(`${dir}/key.pem`), cert: readFileSync(`${dir}/cert.pem`) },
+  answer,
+).listen(0, "127.0.0.1");
+rmSync(dir, { recursive: true });
 
 const dns = dgram.createSocket("udp4");
 dns.on("message", (query, from) => {
@@ -44,5 +65,8 @@ dns.on("message", (query, from) => {
 });
 dns.bind(0, "127.0.0.1");
 
-await Promise.all([listening(proxy), listening(http), listening(dns)]);
-console.log(`PROXY=${proxy.address().port} HTTP=${http.address().port} DNS=${dns.address().port}`);
+await Promise.all([listening(proxy), listening(http), listening(https), listening(dns)]);
+console.log(
+  `PROXY=${proxy.address().port} HTTP=${http.address().port} ` +
+    `HTTPS=${https.address().port} DNS=${dns.address().port}`,
+);

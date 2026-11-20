@@ -14,4 +14,19 @@ host says /by-name
 closed port: 1
 # bash's own /dev/tcp
 host says /from-bash
+# curl: by name, and the large body again
+host says /curl
+@CKSUM@ 300000
+# TLS: the server's certificate is self-signed, so curl refuses (60)
+# unless told not to check; with -k the handshake and the transfer work
+untrusted certificate: 60
+host says /tls
+# openssl, drill (the name server says 10.0.2.2 for everything)
+OpenSSL
+1
+# the ssh clients: a version, a new key
+OpenSSH
+(ED25519)
+# rsync, locally
+rsynced
 [host] machine halted: poweroff

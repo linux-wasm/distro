@@ -255,7 +255,7 @@ function boot(module, build, settings) {
       {
         bytes: build.base_bytes,
         readOnly: true,
-        backend: { kind: "http", url: new URL("base.erofs", location.href).href },
+        backend: { kind: "http", url: new URL("base.erofs.gz", location.href).href },
       },
       {
         bytes: build.data_bytes,

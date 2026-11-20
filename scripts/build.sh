@@ -131,7 +131,8 @@ build_kernel() {
 # The static web site: this repository's page (site/), the kernel's
 # reference host scripts and the kernel image. Deployable as-is to any
 # static host; site/sw.js supplies the COOP/COEP headers where the host
-# cannot. The empty data image is compressed: it is mostly zeros.
+# cannot. Both disk images are compressed: programs shrink to a third, and
+# the empty data image is mostly zeros.
 build_site() {
 	rm -rf "$SITE_OUT"
 	mkdir -p "$SITE_OUT"
@@ -145,7 +146,7 @@ build_site() {
 		"$WORK/src/xterm/package/css/xterm.css" \
 		"$WORK/src/xterm-fit/package/lib/addon-fit.js" \
 		"$WORK/src/xterm-webgl/package/lib/addon-webgl.js" "$SITE_OUT/"
-	cp "$WORK/base.erofs" "$SITE_OUT/"
+	gzip -9 -n -c "$WORK/base.erofs" > "$SITE_OUT/base.erofs.gz"
 	gzip -9 -n -c "$WORK/data.img" > "$SITE_OUT/data.img.gz"
 	printf '{"kernel_repo": "%s", "kernel_commit": "%s", "base_bytes": %s, "data_bytes": %s}\n' \
 		"${KERNEL_REPO%.git}" "$(git -C "$KERNEL_DIR" rev-parse HEAD)" \

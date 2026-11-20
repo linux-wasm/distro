@@ -3,7 +3,8 @@
 // the options of the user-mode network. For a disk it opens what backs it:
 //
 //   { kind: "http", url }
-//       The image is downloaded once and kept in memory; read-only.
+//       The gzip-compressed image is downloaded once and kept in memory,
+//       unpacked; read-only.
 //   { kind: "opfs", name, bytes, initialUrl }
 //       A file in the origin private file system, which the browser keeps
 //       between visits. If it does not exist yet it is created from the
@@ -85,9 +86,8 @@ async function open(backend) {
   if (backend.kind === undefined) return { ...backend, onstatus: note };
   switch (backend.kind) {
     case "http": {
-      const response = await fetch(backend.url);
-      if (!response.ok) throw new Error(`${backend.url}: HTTP ${response.status}`);
-      return memoryDisk(new Uint8Array(await response.arrayBuffer()), false);
+      const image = new Response(await gunzip(backend.url));
+      return memoryDisk(new Uint8Array(await image.arrayBuffer()), false);
     }
     case "opfs":
       try {

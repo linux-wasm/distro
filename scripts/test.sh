@@ -89,7 +89,7 @@ for _ in 1 2 3 4 5 6 7 8 9 10; do
 done
 [ -s "$tmp/ports" ] || { echo "FAIL: net: the test servers did not start"; exit 1; }
 eval "$(cat "$tmp/ports")"
-sed "s/@HTTP@/$HTTP/g" "$DISTRO/tests/net-input.txt" > "$tmp/net-input.txt"
+sed "s/@HTTP@/$HTTP/g; s/@HTTPS@/$HTTPS/g" "$DISTRO/tests/net-input.txt" > "$tmp/net-input.txt"
 # cksum of "0123456789" x 30000, what the HTTP server sends for /large.
 sed "s/@CKSUM@/1993361615/" "$DISTRO/tests/net-expect.txt" > "$tmp/net-expect.txt"
 run_case net --net "ws://127.0.0.1:$PROXY/" --dns "127.0.0.1:$DNS" "$@"
