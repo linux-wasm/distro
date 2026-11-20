@@ -14,7 +14,7 @@ the packages of
 [linux-wasm/ports](https://github.com/linux-wasm/ports) (BusyBox for init
 and the small tools, bash, coreutils,
 ncurses, grep, sed, gawk, findutils, diffutils, tar, gzip, make, less,
-nano) and a test program, packs them into a read-only base image, builds
+nano, openssl, curl, the openssh clients, rsync, drill) and a test program, packs them into a read-only base image, builds
 the kernel and assembles the web page. At boot the base (`/dev/vda`,
 erofs, loaded over HTTP and kept in memory) gets a writable layer on top
 (`/dev/vdb`, ext4, stored by the browser in the origin private file
@@ -48,7 +48,7 @@ distribution with systemd.
 |---|---|---|
 | [linux-wasm/linux](https://github.com/linux-wasm/linux) | Kernel with `arch/wasm` | runs user programs: syscalls, clone, fork, vfork, execve, signals, virtio disks |
 | [linux-wasm/musl](https://github.com/linux-wasm/musl) | C library | enough for BusyBox and `/bin/selftest`; no libc test suite run |
-| [linux-wasm/ports](https://github.com/linux-wasm/ports) | Packages | 14 upstream packages, unpatched; exercised by this repository's boot test |
+| [linux-wasm/ports](https://github.com/linux-wasm/ports) | Packages | 21 upstream packages, unpatched; exercised by this repository's boot test |
 | [linux-wasm/netproxy](https://github.com/linux-wasm/netproxy) | WebSocket to TCP/UDP proxy | Wisp v1 server; used by the network test |
 | linux-wasm/distro (this) | Puts it together | builds, boot-tests and publishes kernel + musl + packages |
 
@@ -111,9 +111,11 @@ node server.mjs --allow-origin http://127.0.0.1:8080    # ws://127.0.0.1:8765/
 On the boot menu tick "Network card" and enter the proxy's URL. In the
 system the interface is `eth0` (10.0.2.15, set up by `/sbin/network-up`),
 the gateway 10.0.2.2 and the name server 10.0.2.3, whose queries go to
-the server named on the menu (default 1.1.1.1). `wget`, `nc`, `ping`
-(the gateway only), `nslookup`, `telnet` and bash's `/dev/tcp` are there;
-BusyBox `wget` speaks https without verifying certificates. A page served
+the server named on the menu (default 1.1.1.1). There are `curl` (with
+OpenSSL and Mozilla's certificate authorities, so https is verified),
+`ssh`, `scp`, `sftp`, `rsync`, `drill` (a `dig`), `openssl`, and from
+BusyBox `wget`, `nc`, `ping` (the gateway only), `nslookup`, `telnet`;
+bash has `/dev/tcp`. BusyBox `wget` does not verify certificates. A page served
 over https (the public one) can only use a `wss://` proxy or one on
 `127.0.0.1`. How it works and what it cannot do is in the kernel's
 `tools/wasm/NOTES.md`; what running a proxy exposes is in netproxy's
@@ -123,7 +125,7 @@ README.
 
 | Layer | Device | Contents | Where it lives |
 |---|---|---|---|
-| base | `/dev/vda`, erofs, read-only | everything the distro ships (`work/base.erofs`) | fetched over HTTP, held in memory |
+| base | `/dev/vda`, erofs, read-only | everything the distro ships (`work/base.erofs`, 57 MiB) | fetched over HTTP compressed (17 MiB), held in memory unpacked |
 | changes | `/dev/vdb`, ext4 | new and changed files, markers for deleted ones | a file in the browser's origin private file system, created from `data.img.gz` on the first visit; under node, the file given to `--disk` |
 
 The kernel mounts the base as its root and runs `/sbin/overlay-init`
@@ -165,7 +167,7 @@ distro needs to change).
 
 Done so far: a kernel that runs user programs with fork, exec, threads,
 signals and job control; musl; virtio disks with a read-only base and a
-persistent layer for changes; a real terminal on the page; 14 packages
+persistent layer for changes; a real terminal on the page; 21 packages
 from linux-wasm/ports with bash as the shell.
 
 What comes next, in order and with what each step is for, is in

@@ -17,7 +17,7 @@ done so far); none of them is a promise.
 | Kernel 7.3 on wasm32, one CPU, no MMU | boots in Chromium and node; virtio disks; ptys, epoll, signalfd, timerfd, inotify enabled, of which only ptys' device node has been looked at |
 | Processes | `fork` (Asyncify + per-process copies of memory), `vfork`, `exec`, threads, signals, job control |
 | musl | static only; enough for the 14 packages; no test suite run |
-| Packages | BusyBox, bash, coreutils, ncurses, grep, sed, gawk, findutils, diffutils, tar, gzip, make, less, nano; all static, C only, autotools only |
+| Packages | 21: BusyBox, bash, coreutils, ncurses, the GNU text and file tools, make, less, nano, openssl, curl, openssh clients, rsync, drill; all static, C only |
 | Network | the kernel's TCP/IP on a virtio network card, through a WebSocket proxy (linux-wasm/netproxy); outgoing TCP and UDP only |
 | Page | boot menu; xterm.js terminal; base image over HTTP into memory; changes in the origin private file system |
 
@@ -134,7 +134,9 @@ catches; a meson package (pixman is a good first one) builds.
   tool is apk-tools, opkg, dpkg or new is open; what matters is that the
   format is one that existing tools can produce.
 - **The base image on demand** (M). The base is fetched whole into
-  memory, which is fine for 15 MB and not for a desktop. The virtio disk
+  memory. It is 57 MiB already (17 compressed), three quarters of it
+  nine statically linked programs that each carry their own OpenSSL; a
+  desktop will not fit. The virtio disk
   of the base reads blocks with HTTP range requests when they are first
   used and keeps them in the browser's cache storage; erofs keeps related
   data together, which suits this.
@@ -142,9 +144,9 @@ catches; a meson package (pixman is a good first one) builds.
   `login`, `ps`, `top`, users and groups from real packages; BusyBox
   shrinks to init and rescue.
 - **Networking**. Done: a virtio network card and a user-mode network
-  in the host that hands connections to a Wisp proxy. Open: a curl and
-  CA certificates as packages (BusyBox wget does not verify
-  certificates), `fetch` as a way to do HTTP without a proxy, and the
+  in the host that hands connections to a Wisp proxy; curl with OpenSSL
+  and CA certificates, the ssh clients, rsync. Open: `fetch` as a way
+  to do HTTP without a proxy, and the
   gaps listed in the kernel's notes (no half-close, nothing inbound).
 
 Done when: `pkg install nano` on a base image without nano works in the
