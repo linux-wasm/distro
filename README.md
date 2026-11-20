@@ -7,17 +7,28 @@ BusyBox patches, the initramfs, and later the web front end.
 **Live: https://linux-wasm.github.io/distro/** (the kernel booting in your
 browser tab; rebuilt from `main` on every push).
 
-**Status: boots to a BusyBox shell.** `scripts/build.sh` builds musl,
-BusyBox (unpatched 1.38.0, NOMMU configuration with the hush shell) and a
-test program, packs them into an initramfs, builds the kernel around it
-and assembles the web page. BusyBox `init` runs `/etc/inittab` and starts
-an interactive shell with pipes, loops, command substitution, Ctrl-C, job
-control (Ctrl-Z, `jobs`, `fg`, `bg`, `&`) and the applets listed in
-`busybox/config`.
+**Status: boots to a BusyBox shell on a layered, persistent root file
+system, in a real terminal.** `scripts/build.sh` builds musl, BusyBox
+(unpatched 1.38.0, NOMMU configuration with the hush shell) and a test
+program, packs them into a read-only base image, builds the kernel and
+assembles the web page. At boot the base (`/dev/vda`, erofs, loaded over
+HTTP and kept in memory) gets a writable layer on top (`/dev/vdb`, ext4,
+stored by the browser in the origin private file system) with overlayfs;
+BusyBox `init` then runs `/etc/inittab` and starts an interactive shell
+with pipes, loops, command substitution, Ctrl-C, job control and the
+applets listed in `busybox/config` (including `vi`, `less`, `top`).
+The page shows the console in xterm.js and tells the kernel its size.
 
-Not there: networking, persistent storage, and anything beyond that applet
-list. A program that computes without making system calls cannot be
-interrupted, and freezes the machine while it runs.
+What you add, change or delete is kept between visits; a newer base does
+not replace it ("reset disk" on the page deletes it). The tab can be
+closed at any time: changes reach the disk within about a second, and
+ext4's journal copes with the cut.
+
+Not there: `fork()`, memory protection between programs, dynamic linking,
+networking, and anything beyond that applet list. A program that computes
+without making system calls cannot be interrupted, and freezes the machine
+while it runs. See the roadmap for what stands between this and a
+distribution with systemd.
 
 ## Repositories
 
@@ -35,26 +46,27 @@ BusyBox is the upstream release; it has needed no patches so far
 Requirements: git, docker (or podman), node >= 20.
 
 ```sh
-scripts/build.sh      # toolchain image, musl, headers, user programs, BusyBox, initramfs, kernel, site
-scripts/test.sh       # headless boot test: types shell commands and Ctrl-C/Ctrl-Z, checks the output
+scripts/build.sh      # toolchain image, musl, headers, user programs, BusyBox, root file system, kernel, site
+scripts/test.sh       # headless boot tests: shell commands, Ctrl-C/Ctrl-Z, and a second boot that finds the first one's changes
 scripts/serve.mjs     # http://127.0.0.1:8080/
 ```
 
 `scripts/build.sh <step>` runs one step (`toolchain`, `musl`, `headers`,
-`user`, `busybox`, `initramfs`, `kernel`, `site`). Everything fetched or
+`user`, `busybox`, `rootfs`, `kernel`, `site`). Everything fetched or
 built goes to `work/` (ignored by git).
 
 ## Layout
 
 | Path | Contents |
 |---|---|
-| `sources.env` | Pinned kernel and musl commits, BusyBox release |
+| `sources.env` | Pinned kernel and musl commits, BusyBox release, xterm.js packages |
 | `scripts/` | `fetch.sh`, `build.sh`, `test.sh`, `serve.mjs`, and `wasm-cc`, the compiler driver for user programs |
 | `busybox/config` | BusyBox options enabled on top of allnoconfig |
 | `kernel.config` | Kernel options enabled on top of the kernel's tinyconfig |
-| `user/` | The distro's own files: `inittab`, `motd`, and `selftest.c` (`/bin/selftest`) |
-| `tests/` | What the boot test types (`boot-input.txt`) and expects (`boot-expect.txt`) |
-| `site/` | The web page: console, keyboard, worker glue and the service worker |
+| `rootfs/` | Files copied into the base image as they are: `/etc`, and `/sbin/overlay-init`, which stacks the layers before init starts |
+| `user/` | The distro's own programs: `selftest.c` (`/bin/selftest`) |
+| `tests/` | What the tests type (`*-input.txt`) and expect (`*-expect.txt`): `boot`, then `persist` on the same disk |
+| `site/` | The web page: terminal, disks (`device-worker.js`), worker glue and the service worker |
 | `patches/` | Patches for upstream projects that have no fork here |
 
 ## Building your own programs
@@ -62,14 +74,29 @@ built goes to `work/` (ignored by git).
 `scripts/wasm-cc` behaves like `cc` for this system (it runs inside the
 toolchain container): it compiles with the required flags and links
 against musl. A single `.c` file dropped into `user/` is built and can be
-added to the initramfs list in `scripts/build.sh`.
+installed in `/bin` of the base image.
 
 ## The web page
 
 `site/` is the page (`index.html`, `boot.js`, `host.js`, `worker.js`,
-`sw.js`); `scripts/build.sh site` combines it with the kernel's host
-scripts (`tools/wasm/host/` in the kernel tree: the part shared with node) and
-`vmlinux.wasm` into `work/site/`, a plain static site.
+`device-worker.js`, `sw.js`); `scripts/build.sh site` combines it with the
+kernel's host scripts (`tools/wasm/host/` in the kernel tree: the part
+shared with node), xterm.js, `vmlinux.wasm`, `base.erofs` and the empty
+`data.img.gz` into `work/site/`, a plain static site.
+
+## The root file system
+
+| Layer | Device | Contents | Where it lives |
+|---|---|---|---|
+| base | `/dev/vda`, erofs, read-only | everything the distro ships (`work/base.erofs`) | fetched over HTTP, held in memory |
+| changes | `/dev/vdb`, ext4 | new and changed files, markers for deleted ones | a file in the browser's origin private file system, created from `data.img.gz` on the first visit; under node, the file given to `--disk` |
+
+The kernel mounts the base as its root and runs `/sbin/overlay-init`
+(`init=` on the built-in command line), which mounts the changes, joins
+the two with overlayfs, makes the result the root and starts `/sbin/init`.
+In the running system the base is at `/overlay/base` and the changes at
+`/overlay/base/overlay/data/upper`. Both disks are virtio block devices
+served by the host (`tools/wasm/host/` in the kernel tree).
 
 The kernel needs SharedArrayBuffer, which browsers only give to
 cross-origin isolated pages (`Cross-Origin-Opener-Policy: same-origin` and
@@ -110,10 +137,32 @@ distro needs to change).
    unpatched.
 4. Kernel: signal handlers. Done: Ctrl-C and job control work. Open: a
    program that makes no system calls cannot be signalled.
-5. A real terminal on the page (escape sequences, line editing with arrow
-   keys); today `site/` is a plain text console.
-6. An initramfs handed over by the host instead of built into the kernel,
-   more applets, storage, networking.
+5. A real terminal on the page. Done: xterm.js, window size.
+6. Storage. Done: virtio disks, a read-only base with a persistent layer
+   for changes. Open: the base is downloaded whole; fetching it block by
+   block on demand (HTTP ranges, cached) is what a large distribution
+   needs.
+7. A process model that ordinary software can live with. This is the
+   step everything below depends on, and it is a change of the kernel's
+   design, not of its configuration:
+   - `fork()`. Programs share one address space and a wasm call stack
+     cannot be copied, so there is none; bash, dpkg, perl, systemd and
+     most of a distribution call it. It needs a memory of its own per
+     process (the kernel then reaches user memory through the host
+     instead of by pointer) and a way to duplicate a running program
+     (compiler instrumentation in the style of Asyncify).
+   - Interrupting a program that computes (signals, time slices):
+     compiler-inserted polling in user programs.
+   - Shared libraries and `dlopen`, `mmap` of files.
+8. A package repository: a new repository of build recipes (ncurses,
+   bash, coreutils, util-linux, ... as wasm packages), a package manager,
+   and a base image made of packages instead of one BusyBox.
+9. systemd. Besides 7 it needs cgroups, unix sockets, netlink and more
+   of the kernel configuration; the event interfaces (epoll, signalfd,
+   timerfd, inotify) are enabled already. systemd supports musl since
+   v259.
+10. Networking (a virtio network device tunnelled over WebSocket or
+    WebTransport).
 
 ## Conventions
 
