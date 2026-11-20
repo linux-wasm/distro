@@ -12,7 +12,7 @@ Run /sbin/overlay-init as init process
 overlay-init: changes are kept on /dev/vdb
 init started: BusyBox
 Changes to the file system are kept
-hush - the humble shell
+built-in shell (ash)
 # uname -sm
 Linux wasm
 # echo
@@ -43,6 +43,18 @@ status 130
 stop me
 Stopped
 fg status 0
+# fork(): the shell is ash, which forks for all of these. A subshell
+# with its own variables,
+in sub
+out unset
+# a pipeline whose parts are shell code,
+got n3
+# command substitution,
+r:xyz
+# a background job,
+bg 0
+# and 200 programs, one fork and exec each
+loop 200
 # the root is the overlay
 1
 # changes: a new file, a deleted one and an edited one; the base below

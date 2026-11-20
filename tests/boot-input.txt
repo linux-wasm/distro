@@ -17,6 +17,11 @@ sh -c 'echo sto""p me; exec sleep 2'
 jobs
 fg
 echo "fg status $?"
+(Y=sub; echo "in $Y"); echo "out ${Y:-unset}"
+for i in 1 2 3; do echo n$i; done | while read l; do echo "got $l"; done | tail -n 1
+echo "r:$(echo abc | tr a-c x-z)"
+sleep 1 & wait; echo "bg $?"
+i=0; while [ $i -lt 200 ]; do /bin/true; i=$((i+1)); done; echo "loop $i"
 grep -c '^overlay / overlay' /proc/mounts
 echo kept > /root/note; rm /etc/motd; echo changed > /etc/hostname
 ls /etc; cat /overlay/base/etc/hostname

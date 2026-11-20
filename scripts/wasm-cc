@@ -11,7 +11,9 @@ so this wrapper
   - links by calling wasm-ld itself with the program ABI's flags, crt1.o,
     libc.a and the compiler-rt builtins, keeping only the inputs (-o,
     objects, archives, -L/-l) from the command line and dropping -Wl,...
-    and other options meant for an ELF linker.
+    and other options meant for an ELF linker;
+  - runs the linked program through wasm-opt --asyncify, which is what
+    makes fork() possible.
 
 The ABI is defined by the kernel: arch/wasm/kernel/binfmt_wasm.c.
 Environment: WASM_SYSROOT (default /work/sysroot).
@@ -36,6 +38,15 @@ LDFLAGS = [
     "-pie", "--experimental-pic", "--no-entry", "--export=_start",
     "--export-if-defined=__clone_entry", "--import-memory", "--shared-memory",
     "--max-memory=4294967296",
+]
+# fork() needs the program's cooperation (see _Fork in musl's
+# src/process/wasm32/ and wasm_fork() in the kernel): Binaryen's Asyncify
+# pass rewrites every function from which the import linux.fork can be
+# reached so that the call stack can be unwound into memory and rebuilt.
+# -O2 cleans up after that pass, which by itself triples the code size;
+# -g keeps the function names.
+ASYNCIFY = [
+    "--asyncify", "--pass-arg=asyncify-imports@linux.fork", "-O2", "-g",
 ]
 # Everything in these lives in musl's libc.a.
 LIBC_LIBS = {"c", "m", "crypt", "rt", "pthread", "util", "dl", "resolv", "xnet"}
@@ -89,7 +100,9 @@ def main():
             inputs.append(obj)
         cmd = [f"{LLVM}/wasm-ld"] + LDFLAGS + [f"{SYSROOT}/lib/crt1.o"] + inputs + [
             f"{SYSROOT}/lib/libc.a", BUILTINS, "-o", output]
-        sys.exit(subprocess.run(cmd).returncode)
+        subprocess.run(cmd, check=True)
+        # fork(): let the program save and restore its call stack.
+        subprocess.run(["wasm-opt"] + ASYNCIFY + [output, "-o", output], check=True)
 
 
 if __name__ == "__main__":

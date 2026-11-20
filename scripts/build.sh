@@ -81,8 +81,9 @@ build_busybox() {
 				{ echo "busybox/config: unknown option $opt" >&2; exit 1; }
 			sed -i "s/^# CONFIG_$opt is not set/CONFIG_$opt=y/" .config
 		done
-		sed -i "s/^CONFIG_SH_IS_NONE=y/# CONFIG_SH_IS_NONE is not set/" .config
-		# hush re-executes itself for $(...) and pipelines of builtins;
+		# /bin/sh is ash (a choice, which allnoconfig leaves at "none").
+		sed -i "s/^CONFIG_SH_IS_NONE=y/CONFIG_SH_IS_ASH=y/" .config
+		# Where BusyBox finds itself to run an applet as a new process;
 		# the default, /proc/self/exe, needs /proc to be mounted.
 		sed -i "s|^CONFIG_BUSYBOX_EXEC_PATH=.*|CONFIG_BUSYBOX_EXEC_PATH=\"/bin/busybox\"|" .config
 		sed -i "s|^CONFIG_EXTRA_CFLAGS=.*|CONFIG_EXTRA_CFLAGS=\"-isystem /kernel-headers/include\"|" .config

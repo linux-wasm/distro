@@ -356,6 +356,124 @@ static void test_signals(void)
 	signal(SIGCHLD, SIG_DFL);
 }
 
+/*
+ * fork: the child continues here with a copy of everything: memory at the
+ * same addresses, and the call stack it was created in.
+ */
+static int fork_global = 100;
+
+/* fork() below a few frames with live locals; returns twice. */
+static pid_t fork_deep(int depth, int *sum)
+{
+	volatile int local = depth * 3;
+	pid_t pid;
+
+	if (depth == 0)
+		return fork();
+	pid = fork_deep(depth - 1, sum);
+	*sum += local;
+	return pid;
+}
+
+static void test_fork(void)
+{
+	static jmp_buf jb;
+	int to_child[2], to_parent[2];
+	int local = 5, status = 0, sum = 0, i;
+	char *heap = malloc(64);
+	char buf[32];
+	pid_t pid;
+
+	strcpy(heap, "parent");
+	pid = fork();
+	if (pid == 0) {
+		/* None of this may show in the parent. */
+		fork_global = 200;
+		local = 6;
+		strcpy(heap, "child");
+		_exit(getpid() != getppid() && fork_global == 200 ? 21 : 22);
+	}
+	check("fork returns the child pid", pid > 0 && pid != getpid());
+	check("fork child exit status", waitpid(pid, &status, 0) == pid &&
+					WIFEXITED(status) && WEXITSTATUS(status) == 21);
+	check("fork child had its own memory",
+	      fork_global == 100 && local == 5 && !strcmp(heap, "parent"));
+
+	/* Parent and child alive at the same time, taking turns. */
+	check("pipes for fork", pipe(to_child) == 0 && pipe(to_parent) == 0);
+	fork_global = 0;
+	pid = fork();
+	if (pid == 0) {
+		close(to_child[1]);
+		close(to_parent[0]);
+		while (read(to_child[0], buf, 1) == 1) {
+			fork_global += 10;	/* the child's count */
+			buf[0] += fork_global;
+			if (write(to_parent[1], buf, 1) != 1)
+				_exit(1);
+		}
+		_exit(fork_global == 30 ? 0 : 2);
+	}
+	close(to_child[0]);
+	close(to_parent[1]);
+	for (i = 0; i < 3; i++) {
+		buf[0] = 'a';
+		fork_global += 1;		/* the parent's count */
+		if (write(to_child[1], buf, 1) != 1 ||
+		    read(to_parent[0], buf, 1) != 1 ||
+		    buf[0] != 'a' + 10 * (i + 1))
+			break;
+	}
+	close(to_child[1]);
+	close(to_parent[0]);
+	check("fork: three round trips through pipes", i == 3);
+	check("fork: each side kept its own counter", fork_global == 3 &&
+	      waitpid(pid, &status, 0) == pid && WIFEXITED(status) &&
+	      WEXITSTATUS(status) == 0);
+
+	/* The call stack: locals of the frames above the fork, in both. */
+	pid = fork_deep(4, &sum);
+	if (pid == 0)
+		_exit(sum == 3 + 6 + 9 + 12 ? 23 : 24);
+	check("fork below several frames", pid > 0 && sum == 30 &&
+	      waitpid(pid, &status, 0) == pid && WEXITSTATUS(status) == 23);
+
+	/* A grandchild, and a child that waits for it. */
+	pid = fork();
+	if (pid == 0) {
+		pid_t grandchild = fork();
+
+		if (grandchild == 0)
+			_exit(5);
+		if (waitpid(grandchild, &status, 0) != grandchild)
+			_exit(1);
+		_exit(WEXITSTATUS(status) + 20);
+	}
+	check("fork in a forked child", pid > 0 &&
+	      waitpid(pid, &status, 0) == pid && WEXITSTATUS(status) == 25);
+
+	/* longjmp in the child to a setjmp from before the fork. */
+	if (setjmp(jb) == 0) {
+		pid = fork();
+		if (pid == 0)
+			longjmp(jb, 1);
+	} else {
+		_exit(26);
+	}
+	check("longjmp in a forked child", pid > 0 &&
+	      waitpid(pid, &status, 0) == pid && WEXITSTATUS(status) == 26);
+
+	/* fork + exec, the usual way to start a program. */
+	pid = fork();
+	if (pid == 0) {
+		execl("/bin/sh", "sh", "-c", "echo via fork; exit 3", (char *)0);
+		_exit(127);
+	}
+	check("fork + exec", pid > 0 && waitpid(pid, &status, 0) == pid &&
+	      WIFEXITED(status) && WEXITSTATUS(status) == 3);
+	free(heap);
+}
+
 int main(void)
 {
 	test_setjmp();
@@ -365,6 +483,7 @@ int main(void)
 	test_time();
 	test_threads();
 	test_vfork();
+	test_fork();
 	test_signals();
 
 	if (failures)

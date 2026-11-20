@@ -1,9 +1,6 @@
 # BusyBox options enabled on top of "make allnoconfig", one per line
 # (without the CONFIG_ prefix). Used by scripts/build.sh busybox.
 #
-# NOMMU makes BusyBox use vfork+exec instead of fork, which is what this
-# system can do; hush is the shell written for that.
-NOMMU
 LFS
 LONG_OPTS
 SHOW_USAGE
@@ -13,30 +10,22 @@ FEATURE_EDITING
 FEATURE_EDITING_FANCY_PROMPT
 FEATURE_EDITING_SAVEHISTORY
 FEATURE_TAB_COMPLETION
-# shell
-HUSH
-SH_IS_HUSH
-HUSH_INTERACTIVE
-# Job control: Ctrl-C ends the foreground command only, Ctrl-Z stops it,
-# and the jobs, fg and bg builtins exist.
-HUSH_JOB
-HUSH_IF
-HUSH_LOOPS
-HUSH_CASE
-HUSH_FUNCTIONS
-HUSH_LOCAL
-HUSH_EXPORT
-HUSH_ECHO
-HUSH_PRINTF
-HUSH_TEST
-HUSH_HELP
-HUSH_SET
-HUSH_UNSET
-HUSH_WAIT
-HUSH_READ
-HUSH_KILL
-HUSH_TICK
-HUSH_TYPE
+# shell: ash, which runs subshells, pipelines and command substitution
+# in forked copies of itself.
+ASH
+ASH_OPTIMIZE_FOR_SIZE
+ASH_INTERNAL_GLOB
+ASH_BASH_COMPAT
+ASH_JOB_CONTROL
+ASH_ALIAS
+ASH_EXPAND_PRMT
+ASH_ECHO
+ASH_PRINTF
+ASH_TEST
+ASH_HELP
+ASH_GETOPTS
+ASH_CMDCMD
+FEATURE_SH_MATH
 # init
 INIT
 FEATURE_USE_INITTAB
